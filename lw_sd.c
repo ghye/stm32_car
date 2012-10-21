@@ -998,9 +998,14 @@ int32_t lw_sd_disk_power_sta(void)
 
 int32_t lw_sd_disk_ctrl_sync(void)
 {
-	if (lw_sd_wait_busy(SD_WAIT_WRITE))
+	sd_cs_low();
+	
+	if (lw_sd_wait_busy(SD_WAIT_WRITE)) {
+		sd_cs_high();
 		return -1;
+	}
 
+	sd_cs_high();
 	return 0;
 }
 
