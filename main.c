@@ -32,7 +32,60 @@ ErrorStatus HSEStartUpStatus;
 void RCC_Configuration(void);
 void NVIC_Configuration(void);
 void Delay(vu32 nCount);
+//******************************************************************************
+// Function Name  : NVIC_Configuration
+// Description    : Nested Vectored Interrupt Controller configuration
+// Input          : None
+// Output         : None
+// Return         : None
+//******************************************************************************
+void NVIC_Config(void)
+{
+    NVIC_InitTypeDef NVIC_InitStructure;
+#ifdef VECT_TAB_RAM
+    // Set the Vector Tab base at location at 0x20000000
+    NVIC_SetVectorTable(NVIC_VectTab_RAM, 0x0);
+#else
+    // Set the Vector Tab base at location at 0x80000000
+    NVIC_SetVectorTable(NVIC_VectTab_FLASH, 0x0);
+#endif
+    /* Configure the NVIC Preemption Priority Bits[配置优先级组] */
+    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
 
+    /* Enable the TIM2 gloabal Interrupt [允许TIM2全局中断]*/
+    NVIC_InitStructure.NVIC_IRQChannel = TIM2_IRQn;//Channel;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+
+}
+
+void TIM2_Config(void)
+{
+    TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
+    //  TIM_OCInitTypeDef  TIM_OCInitStructure ;
+    TIM_DeInit( TIM2);                              //复位TIM2定时器
+
+    /* TIM2 clock enable [TIM2定时器允许]*/
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+
+    /* TIM2 configuration */
+    TIM_TimeBaseStructure.TIM_Period = 20;          //
+    TIM_TimeBaseStructure.TIM_Prescaler = 53999; //35999;    // 108M/(53999+1)/20 = 100Hz
+    TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;  // 时钟分割
+    TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;  //计数方向向上计数
+    TIM_TimeBaseInit(TIM2, &TIM_TimeBaseStructure);
+
+    /* Clear TIM2 update pending flag[清除TIM2溢出中断标志] */
+    TIM_ClearFlag(TIM2, TIM_FLAG_Update);
+
+    /* Enable TIM2 Update interrupt [TIM2溢出中断允许]*/
+    TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
+
+    /* TIM2 enable counter [允许tim2计数]*/
+    TIM_Cmd(TIM2, ENABLE);
+}
 /* Private functions ---------------------------------------------------------*/
 /*******************************************************************************
 * Function Name  : RCC_Configuration
@@ -151,6 +204,11 @@ com_send_char(1, 0xa5a5);
 	//com_send_char(1, 0xa5a5);
 }
 
+bool is_send_cam2pgrs(void)
+{
+	return true;
+}
+
 #include "lw_sd.h"
 #include "lw_gprs.h"
 #include "lw_gps.h"
@@ -159,6 +217,12 @@ com_send_char(1, 0xa5a5);
 
 int main(void)
 {
+	uint32_t err_cnt = 0;
+	uint32_t ok_cnt = 0;
+	uint32_t ret;
+
+	NVIC_Config();
+	TIM2_Config();
 	//RCC_Configuration();
 	//NVIC_Configuration();
 	
@@ -199,7 +263,7 @@ int main(void)
 #endif
 
 #define TEST_GPS
-//lw_gps_init();
+lw_gps_init();
 #ifdef TEST_GPS
 	lw_gps_init();
 	lw_gps_param_init();
@@ -225,7 +289,31 @@ int main(void)
 	continue;*/
 #endif
 
-#define TEST_SD
+//#define TEST_SD
+#if (defined(TEST_SD) && defined(TEST_CAM) && !defined(TEST_GPRS) && !defined(TEST_GPS))
+	
+	while (1) {
+		ret = lw_get_frame2sd();
+		if (-1 == ret) {
+			err_cnt++;
+			debug_printf_s("-----------------------------------------");
+		}
+		else if (0 == ret) {
+			ok_cnt++;
+		}
+		if (!((err_cnt + ok_cnt)%5)) {
+			debug_printf_s("file err cnt:");
+			debug_printf_h(err_cnt);
+			debug_printf_s("file ok cnt:");
+			debug_printf_h(ok_cnt);
+			debug_printf_m("");
+		}
+		delay(30);
+	}
+	
+#endif
+
+
 #ifdef TEST_SD
 	while (1)
 		//lw_sd_test();
@@ -278,7 +366,7 @@ com_send_message(1, "222");
 	while(1){test_cam(); delay(30);}
 #endif
 
-#if (defined(TEST_GPRS) &&  defined(TEST_CAM) && !defined(TEST_GPS))
+#if 0 //(defined(TEST_GPRS) &&  defined(TEST_CAM) && !defined(TEST_GPS))
 	while(1)
 	{
 		if(lw_cam_get_frame() == 0)
@@ -291,7 +379,8 @@ com_send_message(1, "222");
 
 #if (defined(TEST_GPRS) &&  defined(TEST_CAM) && defined(TEST_GPS))
 	while(1){
-		if(( lw_gps_test()) == 0)
+		lw_cam_direct_to_gprs();
+		if (( lw_gps_test() == 0) || (is_send_cam2pgrs()))
 		{
 			//if((lw_nmea_test() ) == 0)
 			lw_nmea_test() ;

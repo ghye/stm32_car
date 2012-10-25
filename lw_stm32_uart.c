@@ -333,6 +333,7 @@ void USART3_IRQHandler(void)
 	{
 		/* Read one byte from the receive data register */
 		lw_vc0706_recv(USART_ReceiveData(USART3));
+		//lw_get_cam_data_from_hw(USART_ReceiveData(USART3));
 	}
 }
 

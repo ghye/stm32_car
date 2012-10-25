@@ -7,7 +7,7 @@
 #include "lw_stm32_spi.h"
 #include "lw_stm32_uart.h"
 
-#define TIMEOUT 1000
+#define TIMEOUT 9000
 
 sd_struct sd_info;
 
@@ -164,7 +164,7 @@ static uint8_t spi_send_cmd_nocs(uint8_t cmd, uint8_t *param, uint8_t resptype, 
 	uint8_t ret;
 	uint8_t crc;
 	uint8_t rlen;
-	uint16_t timeout_cnt=0;
+	uint32_t timeout_cnt=0;
 	
 	spi_send_char((cmd & 0x3f) | 0x40);
 
@@ -210,7 +210,7 @@ static uint8_t spi_send_cmd_nocs(uint8_t cmd, uint8_t *param, uint8_t resptype, 
 		//debug_printf_h(ret);
 		//debug_printf_s(",");
 		timeout_cnt ++;
-	}while(((ret & 0x80) != 0) && (timeout_cnt < TIMEOUT));
+	}while(((ret & 0x80) != 0) && (timeout_cnt < 65000 /*TIMEOUT*/));
 
 	if(timeout_cnt >= TIMEOUT)
 	{
@@ -588,8 +588,12 @@ static int32_t lw_sd_write_block(uint8_t cmdtype, uint32_t addr)
 	
 	if(ret != SD_NO_ERR) {
 		com_send_message(2, "write_block cmd err");
+		debug_printf_s("errno ret=");
+		debug_printf_h(ret);
+		debug_printf_s("");
 		return ret;
 	}
+	//else if (resp & 0x80) { /*?????? 参考ffsample只要看高位*/
 	else if( resp != 0) {
 		com_send_message(2, "write_block resp err:");
 		com_send_hex(2, resp);
@@ -606,7 +610,7 @@ int32_t lw_sd_wait_busy(uint8_t waittype)
 	uint32_t timeout_cnt;
 	uint32_t i;
 
-	timeout_cnt = 9000;
+	timeout_cnt = 65000;
 	i = 0;
 /*	if (false == sd_cs_low()) {
 		com_send_message(2, "sd_wait_busy low err");
@@ -614,8 +618,9 @@ int32_t lw_sd_wait_busy(uint8_t waittype)
 	}*/
 	do {
 		ret = spi_recv_char();
-		i++;
-	}while((ret != 0xFF) && (i < timeout_cnt));
+		//i++;
+	//}while((ret != 0xFF) && (i < timeout_cnt));
+	}while(ret != 0xFF) ;
 
 	//spi_send_char(0xFF);
 	/*sd_cs_high();*/
@@ -663,11 +668,19 @@ static int32_t lw_sd_write_data(bool mult_block, uint8_t *buf, uint32_t buflen)
 
 	//sd_cs_high();
 
+	#if 0
+	if ((spi_recv_char() & 0x1f) != 0x05) { /*???????参考ffsample*/
+		com_send_message(2, "err not accept data");
+		return SD_ERR_TIMEOUT_WRITE;
+	}
+	#else
+
 	if (lw_sd_wait_busy(SD_WAIT_WRITE) != SD_NO_ERR) {
 		com_send_message(2, "write block timeout");
 //		sd_cs_high();
 		return SD_ERR_TIMEOUT_WRITE;
 	}
+	#endif
 
 //	sd_cs_high();
 
@@ -754,6 +767,7 @@ static int32_t lw_sd_check_write_ok()
 int32_t _lw_sd_write(uint8_t *buf, uint32_t buflen, uint32_t addr)
 {
 	int32_t ret;
+/*
 debug_printf_s("addr=");
 debug_printf_h(addr>>24);
 debug_printf_s(",");
@@ -763,7 +777,7 @@ debug_printf_h(addr>>8);
 debug_printf_s(",");
 debug_printf_h(addr>>0);
 debug_printf_m("");
-
+*/
 	sd_cs_low();
 
 	ret = lw_sd_write_block(0, addr);
@@ -780,12 +794,15 @@ sd_cs_low();
 	}
 sd_cs_high();
 sd_cs_low();
+
+	/*??????参考ffsample下面这句可以不用的*/
+	#if 0
 	ret = lw_sd_check_write_ok();
 	if (ret != SD_NO_ERR) {
 		com_send_message(2, "lw_sd_check_write_ok err");
 		goto err; //return ret;
 	}
-
+	#endif
 
 	sd_cs_high();
 	
@@ -946,8 +963,15 @@ int32_t lw_sd_disk_initialize(void)
 
 int32_t lw_sd_disk_status(void)
 {
+	int32_t ret;
+	
 	/* FIXME: */
-	return 0;
+	sd_cs_low();
+	ret = lw_sd_check_write_ok();
+	sd_cs_high();
+
+	return ret;
+	//return 0;
 }
 
 int32_t lw_sd_disk_read(uint8_t *buf, uint32_t start_sector, uint32_t count)
@@ -1087,6 +1111,137 @@ FIL Fil;            /* File object */
 uint8_t wBuff[512];     /* File read buffer */
 uint8_t rBuff[512];
 
+int32_t lw_sd_fatfs_init(void)
+{
+	FRESULT rc;             /* Result code */
+	
+	rc = f_mount(0, &Fatfs);     /* Register volume work area (never fails) */
+	if (rc ) {
+		debug_printf_m("mount err");
+		return -1;
+	}
+
+	return 0;
+}
+
+int32_t lw_sd_fatfs_deinit(void)
+{
+	FRESULT rc;             /* Result code */
+	
+	rc = f_mount(0, NULL);     /* Unregister volume work area (never fails) */	
+	if (rc ) {
+		debug_printf_m("umount err");
+		return -1;
+	}
+
+	return 0;
+}
+
+int32_t lw_get_frame2sd(void)
+{
+	#include "lw_vc0706.h"
+	
+	bool finish;
+	
+	uint8_t *p;
+	uint16_t retry;
+	uint16_t file_faile_timeout;
+	uint32_t bw;
+	uint32_t len;
+	FIL Fil;            /* File object */
+	FRESULT rc;             /* Result code */
+	static uint32_t file_num = 1;
+	uint8_t file_name[16];
+
+	uint64_t old_pz;
+	uint32_t cnt = 0;
+	
+	if (lw_cam_get_frame()) {
+		debug_printf_m("get frame len err");
+		return -2;
+	}
+
+	if (lw_sd_fatfs_init())
+		return -1;
+	sprintf(file_name, "c%d.jpg", file_num++);
+	if (f_open(&Fil, file_name, FA_WRITE | FA_CREATE_ALWAYS)) {
+		if (f_open(&Fil, file_name, FA_WRITE | FA_CREATE_ALWAYS)) {
+			debug_printf_s("open ");
+			debug_printf_s(file_name);
+			debug_printf_s( " err");
+			debug_printf_m("");
+			//debug_printf_m("open cam.jpg err");
+			f_close(&Fil);
+			lw_sd_fatfs_deinit();
+			return -1;
+		}
+	}
+
+	lw_cam_start_frame_();
+
+	
+	
+	do{
+		old_pz = f_tell(&Fil);
+		finish = lw_get_cam_data(&p, &len);
+		if (len) {
+			cnt += len;
+			retry = 0;
+			do {
+				rt:
+				rc = f_write(&Fil, p, len, &bw);
+				if (rc) {
+					debug_printf_m("write err");
+					if (retry ++ < 5) {
+						debug_printf_m("retry");
+#if 0
+						f_close(&Fil);
+						if (f_open(&Fil, file_name, FA_WRITE)) {
+							debug_printf_m("retry open err");
+							f_close(&Fil);
+							lw_sd_fatfs_deinit();
+							return -1;
+						}
+#endif						
+						f_lseek(&Fil, old_pz);
+						goto rt;
+					}
+					f_close(&Fil);
+					lw_sd_fatfs_deinit();
+					//file_num--;
+					return -1;
+				}
+				if (len -= bw) {
+					debug_printf_m("warring len!=bw");
+					p += bw;
+				}
+			}while (len);
+		}
+	}while (false == finish);
+
+	lw_cam_stop_frame_();
+	
+	debug_printf_m("");
+	debug_printf_s("save to sd len=");
+	debug_printf_h(cnt>>24);
+	debug_printf_s(",");
+	debug_printf_h(cnt>>16);
+	debug_printf_s(",");
+	debug_printf_h(cnt>>8);
+	debug_printf_s(",");	
+	debug_printf_h(cnt);
+	debug_printf_m("");
+	
+	if (f_close(&Fil)) {
+		debug_printf_m("close cam.jpg err");
+		lw_sd_fatfs_deinit();
+		return -1;
+	}
+
+	lw_sd_fatfs_deinit();
+	return 0;
+}
+
 void lw_sd_with_fatfs_test(void)
 {
 	FRESULT rc;             /* Result code */
@@ -1220,3 +1375,7 @@ while(1){
 	rc = f_close(&Fil);
 #endif
 }
+
+
+
+

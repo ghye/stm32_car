@@ -59,6 +59,9 @@ DRESULT disk_read (
 	if (drv || Stat || !count)
 		return RES_ERROR;
 
+	if (lw_sd_disk_status())
+		return RES_ERROR;
+	
 	if (lw_sd_disk_read(buff, sector, count))
 		return RES_ERROR;
 	
@@ -76,6 +79,9 @@ DRESULT disk_write (
 	if(drv || Stat || !count)
 		return RES_ERROR;
 
+	if (lw_sd_disk_status())
+		return RES_ERROR;
+		
 	if (lw_sd_disk_write(buff, sector, count))
 		return RES_ERROR;
 

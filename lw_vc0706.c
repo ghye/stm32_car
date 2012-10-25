@@ -20,7 +20,7 @@
 #define LW_VC0706_FBUF_NEXT_FRAME 0x01
 
 
-#define VC0706_MAX_CMD_LEN 40
+#define VC0706_MAX_CMD_LEN 2048 //512 //40
 
 #define VC0706_RXNE_IRQ_ENABLE() USART_ITConfig(USART3, USART_IT_RXNE, ENABLE)
 #define VC0706_RXNE_IRQ_DISABLE() USART_ITConfig(USART3, USART_IT_RXNE, DISABLE)
@@ -38,8 +38,12 @@ struct vc0706_info_{
 	enum vc0706_status status;
 	struct {
 		uint8_t rbuf[VC0706_MAX_CMD_LEN];
-		uint8_t rbuf_len;
+		//uint8_t rbuf_len;
 		uint32_t frame_len;
+		uint32_t recv_point;
+		uint32_t recv_cnt; /*用于计算一帧的大小*/
+		uint32_t send_cnt;
+		uint32_t send_point;
 	}rbuf_info;
 	struct {
 		uint8_t sbuf[VC0706_MAX_CMD_LEN];
@@ -48,23 +52,37 @@ struct vc0706_info_{
 };
 struct vc0706_info_ vc0706_info;
 
+uint32_t lw_get_frame_len(void)
+{
+	return vc0706_info.rbuf_info.frame_len;
+}
+
 uint8_t lw_vc0706_get_rbuf(uint8_t *buf)
 {
-	memcpy(buf, vc0706_info.rbuf_info.rbuf, vc0706_info.rbuf_info.rbuf_len);
-	return vc0706_info.rbuf_info.rbuf_len;
+	//memcpy(buf, vc0706_info.rbuf_info.rbuf, vc0706_info.rbuf_info.rbuf_len);
+	//return vc0706_info.rbuf_info.rbuf_len;
+	memcpy(buf, vc0706_info.rbuf_info.rbuf, vc0706_info.rbuf_info.recv_point);
+	return vc0706_info.rbuf_info.recv_point;
 }
 
 void lw_vc0706_recv(uint8_t val)
 {
-	vc0706_info.rbuf_info.rbuf[vc0706_info.rbuf_info.rbuf_len++] = val;
+	vc0706_info.rbuf_info.rbuf[vc0706_info.rbuf_info.recv_point++] = val;
+	if (vc0706_info.rbuf_info.recv_point >= VC0706_MAX_CMD_LEN)
+		vc0706_info.rbuf_info.recv_point = 0;
+	vc0706_info.rbuf_info.recv_cnt++;
 }
 
 void lw_vc0706_clean_rbuf(void)
 {
-	vc0706_info.rbuf_info.rbuf_len = 0;
+	vc0706_info.rbuf_info.recv_point= 0;
+	vc0706_info.rbuf_info.recv_cnt = 0;
+	vc0706_info.rbuf_info.send_cnt = 0;
+	vc0706_info.rbuf_info.send_point = 0;
 	memset(vc0706_info.rbuf_info.rbuf, 0, VC0706_MAX_CMD_LEN);
 }
 
+void lw_vc0706_send_set_ratio(uint8_t ratio);
 void lw_vc0706_init(void)
 {
 	com_para_t com_para;
@@ -77,7 +95,8 @@ void lw_vc0706_init(void)
 	com_para.port = 3;
 	com_para.twoStopBits = false;
 	com_init(&com_para);
-	
+
+	lw_vc0706_send_set_ratio(0xFF);
 }
 
 void lw_vc0706_param_init(void)
@@ -200,6 +219,36 @@ static uint8_t read_fbuf_trans_data_mode(bool isDMA /* MCU or DMA*/,
 }
 
 #define cam_send_cmd(x, y, z) com_send_nchar(x, y, z)
+static void lw_vc0706_send_set_ratio(uint8_t ratio)
+{
+	uint8_t rt[9]={0x56, 0x00, 0x31, 0x05, 0x01, 0x01, 0x12, 0x04, 0xFF};
+
+	rt[8] = ratio;
+	cam_send_cmd(3, rt, 9);
+}
+
+static void lw_vc0706_send_set_size(uint8_t flag)
+{
+	uint8_t sz[5] = {0x56, 0x00, 0x54, 0x01, 0x11};
+
+	switch (flag) {
+	case 0:
+		sz[4] = 0x00; /*640x480 */
+		break;
+	case 1:
+		sz[4] = 0x11; /* 320x240 */
+		break;
+	case 2:
+		sz[4] = 0x22; /* 160x120 */
+		break;
+	default:
+		sz[4] = 0x11;
+		break;
+	}
+
+	cam_send_cmd(3, sz, 5);
+}
+
 static void lw_vc0706_send_system_reset(void)
 {
 	vc0706_info.status = VC0706_STATUS_SYSTEM_RESET;
@@ -298,19 +347,60 @@ static void get_frame_len(uint8_t *buf)
 	
 }
 
+static int32_t lw_cam_waitfor_fbuf_ctrl(void)
+{
+	while (vc0706_info.rbuf_info.recv_point < 5 )
+		;
+	if (vc0706_info.rbuf_info.rbuf[3]) {
+		debug_printf_m("cam_fbuf_ctrl err");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int32_t lw_cam_waitfor_get_len(void)
+{
+	while (vc0706_info.rbuf_info.recv_point < 5 )
+		;
+	if (0x00 == vc0706_info.rbuf_info.rbuf[4]) {
+		debug_printf_m("cam_get_len err");
+		return -1;
+	}
+	while (vc0706_info.rbuf_info.recv_point < 9 )
+		;
+
+	return 0;
+}
 int32_t lw_cam_get_frame(void)
 {
 	//VC0706_RXNE_IRQ_ENABLE();
-		
+	extern volatile
+	unsigned int Timer1, Timer2;
+	
 	lw_vc0706_send_system_reset();
-	delay(10);
+	Timer1 = 20;
+	while(Timer1);
+	
+	//lw_vc0706_send_set_ratio(0xFF);
+	lw_vc0706_send_set_size(1);
+	Timer1 = 100;
+	while(Timer1);
+
+	VC0706_RXNE_IRQ_DISABLE();
+	lw_vc0706_clean_rbuf();
+	VC0706_RXNE_IRQ_ENABLE();
 	lw_vc0706_send_stop_cfbuf();
-	delay(10);		
+	if (lw_cam_waitfor_fbuf_ctrl())
+		return -1;
+
+	
 	VC0706_RXNE_IRQ_DISABLE();
 	lw_vc0706_clean_rbuf();
 	VC0706_RXNE_IRQ_ENABLE();
 	lw_vc0706_send_get_len();
-	delay(10);
+	if (lw_cam_waitfor_get_len())
+		return -1;
 	get_frame_len(vc0706_info.rbuf_info.rbuf + 5);
 
 	//lw_vc0706_send_read_fbuf();
@@ -336,6 +426,23 @@ frame_len = 24;
 	return 0;
 }
 
+int32_t lw_cam_start_frame_(void)
+{
+	
+	VC0706_RXNE_IRQ_ENABLE();
+	lw_vc0706_clean_rbuf();
+	lw_vc0706_send_read_fbuf();
+
+	return 0;
+}
+
+int32_t lw_cam_stop_frame_(void)
+{
+	
+	VC0706_RXNE_IRQ_DISABLE();
+
+	return 0;
+}
 int32_t lw_cam_stop_frame(void)
 {
 	if(lw_cam2gprs_is_finished() == 0 )
@@ -345,4 +452,45 @@ int32_t lw_cam_stop_frame(void)
 	}
 
 	return -1;
+}
+
+
+bool lw_get_cam_data(uint8_t **buf, uint32_t *buflen)
+{
+	bool finish;
+	uint32_t len;
+	uint32_t rpoint;
+	uint32_t spoint;
+	uint32_t rcnt;
+	uint8_t *p;
+
+	finish = false;
+	len = 0;
+	rcnt = vc0706_info.rbuf_info.recv_cnt; /*必须首先做，负责可能因为中断而结果有误*/
+	rpoint = vc0706_info.rbuf_info.recv_point;
+	spoint = vc0706_info.rbuf_info.send_point;
+	
+	if (rpoint >= spoint + 512) {
+		len = 512;
+		p = vc0706_info.rbuf_info.rbuf + spoint;
+		vc0706_info.rbuf_info.send_point += len;
+	}
+	else if (rpoint < spoint) {
+		len = VC0706_MAX_CMD_LEN - spoint;
+		p = vc0706_info.rbuf_info.rbuf + spoint;
+		vc0706_info.rbuf_info.send_point = 0;
+	}
+	else if (rcnt >= vc0706_info.rbuf_info.frame_len + 5*2) {
+		/*已接收完整一帧*/
+		//len = (rpoint >= spoint) ? (rpoint - spoint):(VC0706_MAX_CMD_LEN - spoint + rpoint);
+		len = rpoint - spoint;
+		p = vc0706_info.rbuf_info.rbuf + spoint;
+		finish = true;
+	}
+
+	//cam_info.send_cnt += len;
+	*buf = p;
+	*buflen = len;
+
+	return finish;	
 }

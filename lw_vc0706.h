@@ -8,9 +8,13 @@ void lw_vc0706_init(void);
 void lw_vc0706_param_init(void);
 void test_cam(void);
 
+void lw_vc0706_recv(uint8_t val);
 int32_t lw_cam_get_frame(void);
 int32_t lw_cam_start_frame(void);
+int32_t lw_cam_start_frame_(void);
+int32_t lw_cam_stop_frame_(void);
 int32_t lw_cam_stop_frame(void);
+bool lw_get_cam_data(uint8_t **buf, uint32_t *buflen);
 	
 #endif
 
