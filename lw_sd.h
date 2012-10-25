@@ -64,6 +64,9 @@ extern sd_struct sd_info;
 
 int32_t lw_sd_init(void);
 int32_t lw_sd_active(void);
+int32_t lw_sd_fatfs_init(void);
+int32_t lw_sd_fatfs_deinit(void);
+int32_t lw_get_frame2sd(void);
 
 #endif
 
