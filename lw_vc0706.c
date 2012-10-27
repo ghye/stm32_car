@@ -494,3 +494,47 @@ bool lw_get_cam_data(uint8_t **buf, uint32_t *buflen)
 
 	return finish;	
 }
+
+bool lw_get_cam_data_to_gprs(uint8_t **buf, uint32_t *buflen)
+{
+	#define D2GPRSSZ 24
+	bool finish;
+	uint32_t len;
+	uint32_t rpoint;
+	uint32_t spoint;
+	uint32_t rcnt;
+	uint8_t *p;
+
+	finish = false;
+	len = 0;
+	rcnt = vc0706_info.rbuf_info.recv_cnt; /*必须首先做，负责可能因为中断而结果有误*/
+	rpoint = vc0706_info.rbuf_info.recv_point;
+	spoint = vc0706_info.rbuf_info.send_point;
+	
+	if (rpoint >= spoint + D2GPRSSZ) {
+		len = D2GPRSSZ;
+		p = vc0706_info.rbuf_info.rbuf + spoint;
+		vc0706_info.rbuf_info.send_point += len;
+	}
+	else if (rpoint < spoint) {
+		len = VC0706_MAX_CMD_LEN - spoint;
+		p = vc0706_info.rbuf_info.rbuf + spoint;
+		vc0706_info.rbuf_info.send_point = 0;
+	}
+	else if (rcnt >= vc0706_info.rbuf_info.frame_len + 5*2) {
+		/*已接收完整一帧*/
+		//len = (rpoint >= spoint) ? (rpoint - spoint):(VC0706_MAX_CMD_LEN - spoint + rpoint);
+		len = rpoint - spoint;
+		p = vc0706_info.rbuf_info.rbuf + spoint;
+		finish = true;
+	}
+
+	//cam_info.send_cnt += len;
+	*buf = p;
+	*buflen = len;
+
+	return finish;	
+}
+
+
+

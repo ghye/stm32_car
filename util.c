@@ -38,3 +38,7 @@ void debug_printf_s(uint8_t *m)
 {
 	com_send_string(2, m);
 }
+
+
+
+

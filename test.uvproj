@@ -460,6 +460,11 @@
               <FileType>1</FileType>
               <FilePath>.\system_stm32f10x.c</FilePath>
             </File>
+            <File>
+              <FileName>stm32f10x_it.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\stm32f10x_it.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -589,14 +594,14 @@
           <GroupName>ff09a</GroupName>
           <Files>
             <File>
-              <FileName>lw_stm_sd_fatfs_port.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\lw_stm_sd_fatfs_port.c</FilePath>
-            </File>
-            <File>
               <FileName>ff.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\ff9a\src\ff.c</FilePath>
+            </File>
+            <File>
+              <FileName>sdc_diskio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\sdc_diskio.c</FilePath>
             </File>
           </Files>
         </Group>

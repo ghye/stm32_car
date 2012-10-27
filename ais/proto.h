@@ -1041,8 +1041,15 @@ struct nmea_t{
 
 struct gps_device_t{
     struct gps_packet_t packet;
+	
+#ifdef AIVDM_ENABLE
     struct aivdm_context_t aivdm[AIVDM_CHANNELS];
+
+
     struct gps_data_t gpsdata;
+
+#endif /*AIVDM_ENABLE*/
+
 	struct nmea_t nmea;	/*ghye*/
 };
 

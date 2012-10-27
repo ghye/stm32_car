@@ -7,6 +7,7 @@
 #include "proto.h"
 //#include "nmea0813.h"
 
+#ifdef AIVDM_ENABLE
 void gpsd_report(int32_t errlevel/* UNUSED*/, const int8_t *fmt, ... )
 /* our version of the logger */
 {
@@ -1338,9 +1339,11 @@ printf("\n");
     ais_context->decoded_frags++;
     return false;
 }
+#endif /*AIVDM_ENABLE*/
 
 uint64_t /*gps_mask_t*/ aivdm_analyze(struct gps_device_t *session)
 {
+#ifdef AIVDM_ENABLE
     if (session->packet.type == AIVDM_PACKET) {
 	if (aivdm_decode
 	    ((int8_t *)session->packet.outbuffer, session->packet.outbuflen,
@@ -1348,6 +1351,10 @@ uint64_t /*gps_mask_t*/ aivdm_analyze(struct gps_device_t *session)
 	    return ONLINE_SET | AIS_SET;
 	} else
 	    return ONLINE_SET;
+#else
+	if (0) {
+#endif /*AIVDM_ENABLE*/
+
 //#ifdef NMEA_ENABLE
     } else if (session->packet.type == NMEA_PACKET) {
 	return nmea_parse((int8_t *)session->packet.outbuffer, session);

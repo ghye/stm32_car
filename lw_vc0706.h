@@ -15,6 +15,7 @@ int32_t lw_cam_start_frame_(void);
 int32_t lw_cam_stop_frame_(void);
 int32_t lw_cam_stop_frame(void);
 bool lw_get_cam_data(uint8_t **buf, uint32_t *buflen);
-	
+bool lw_get_cam_data_to_gprs(uint8_t **buf, uint32_t *buflen);
+
 #endif
 
