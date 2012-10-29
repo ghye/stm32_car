@@ -20,7 +20,8 @@
 #define LW_VC0706_FBUF_NEXT_FRAME 0x01
 
 
-#define VC0706_MAX_CMD_LEN 2048 //512 //40
+#define VC0706_MAX_CMD_LEN 0x3A00 //2048 //512 //40
+#define VC0706_MAX_CMD_LEN2 2048
 
 #define VC0706_RXNE_IRQ_ENABLE() USART_ITConfig(USART3, USART_IT_RXNE, ENABLE)
 #define VC0706_RXNE_IRQ_DISABLE() USART_ITConfig(USART3, USART_IT_RXNE, DISABLE)
@@ -46,7 +47,7 @@ struct vc0706_info_{
 		uint32_t send_point;
 	}rbuf_info;
 	struct {
-		uint8_t sbuf[VC0706_MAX_CMD_LEN];
+		uint8_t sbuf[VC0706_MAX_CMD_LEN2];
 		uint8_t sbuf_len;
 	}sbuf_info;
 };
@@ -349,8 +350,13 @@ static void get_frame_len(uint8_t *buf)
 
 static int32_t lw_cam_waitfor_fbuf_ctrl(void)
 {
-	while (vc0706_info.rbuf_info.recv_point < 5 )
+	volatile unsigned int Timer1, Timer2;
+
+	Timer1 = 500;
+	while (vc0706_info.rbuf_info.recv_point < 5 && Timer1)
 		;
+	if (!Timer1)
+		return -1;
 	if (vc0706_info.rbuf_info.rbuf[3]) {
 		debug_printf_m("cam_fbuf_ctrl err");
 		return -1;
@@ -361,8 +367,13 @@ static int32_t lw_cam_waitfor_fbuf_ctrl(void)
 
 static int32_t lw_cam_waitfor_get_len(void)
 {
-	while (vc0706_info.rbuf_info.recv_point < 5 )
+	volatile unsigned int Timer1, Timer2;
+
+	Timer1 = 500;
+	while (vc0706_info.rbuf_info.recv_point < 5 && Timer1)
 		;
+	if (!Timer1)
+		return -1;
 	if (0x00 == vc0706_info.rbuf_info.rbuf[4]) {
 		debug_printf_m("cam_get_len err");
 		return -1;
@@ -497,7 +508,7 @@ bool lw_get_cam_data(uint8_t **buf, uint32_t *buflen)
 
 bool lw_get_cam_data_to_gprs(uint8_t **buf, uint32_t *buflen)
 {
-	#define D2GPRSSZ 24
+	#define D2GPRSSZ 1024
 	bool finish;
 	uint32_t len;
 	uint32_t rpoint;

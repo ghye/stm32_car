@@ -18,7 +18,7 @@ void delay(unsigned long n);
 void debug_printf_m(uint8_t *m) ;
 void debug_printf_h(uint8_t m);
 void debug_printf_s(uint8_t *m);
-
+uint8_t *memstr(uint8_t *buf, uint32_t buflen, uint8_t *str, uint32_t strlen);
 
 #endif
 

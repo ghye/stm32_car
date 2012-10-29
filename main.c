@@ -146,7 +146,21 @@ com_send_char(1, 0xa5a5);
 
 bool is_send_cam2pgrs(void)
 {
-	return false;//true;
+	volatile unsigned int cam_gps_tmr;
+/*
+	static bool send_cam_now = false;
+	
+	if (!cam_gps_tmr) {
+		cam_gps_tmr = 1000;
+		send_cam_now =  (send_cam_now ? false:true);
+	}
+
+	if (send_cam_now)
+		return true;
+
+	return false;
+	*/
+	return true;
 }
 
 #include "lw_sd.h"
@@ -315,7 +329,7 @@ com_send_message(1, "222");
 		extern volatile unsigned int Timer1, Timer2;
 		Timer1 = 100;
 		while(Timer1);
-		lw_cam_direct_to_gprs();
+		//lw_cam_direct_to_gprs();
 		if (( lw_gps_test() == 0) || (is_send_cam2pgrs()))
 		{
 			//if((lw_nmea_test() ) == 0)

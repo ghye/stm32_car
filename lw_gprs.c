@@ -33,8 +33,8 @@
 #define SET_APNTYPE "AT^SICS=0,apn,3GNET\x00D\x00A"
 #define SET_SRVTYPE "AT^SISS=0,srvType,Socket\x00D\x00A"
 #define SET_CONID "AT^SISS=0,conId,0\x00D\x00A"
-//#define SET_SRV_URL_1 "AT^SISS=0,address,\"socktcp://113.105.139.109:6969\"\x00D\x00A"
-#define SET_SRV_URL_1 "AT^SISS=0,address,\"socktcp://203.88.202.116:7788\"\x00D\x00A"
+#define SET_SRV_URL_1 "AT^SISS=0,address,\"socktcp://113.105.139.109:6969\"\x00D\x00A"
+//#define SET_SRV_URL_1 "AT^SISS=0,address,\"socktcp://203.88.202.116:7788\"\x00D\x00A"
 #define OPEN_CON0 "AT^SISO=0\x00D\x00A"
 #define CLOSE_CON0 "AT^SISC=0\x00D\x00A"
 #define GET_IMEI "AT+CGSN\x00D\x00A"
@@ -55,6 +55,7 @@ typedef enum{
 	GPRS_STATUS_SRVURL,
 	GPRS_STATUS_SOCKET_OPEN,
 	GPRS_STATUS_SOCKET_TP,
+	GPRS_STATUS_SOCKET_TP_SEND_MSG,
 	GPRS_STATUS_SOCKET_TP_FINISH,
 	GPRS_STATUS_SOCKET_WRITE,
 	GPRS_STATUS_SOCKET_WRITE_MSG,
@@ -508,6 +509,8 @@ static void lw_send_socket_write(uint32_t msglen)
 
 static bool lw_gprs_is_socket_closed(void)
 {
+	uint32_t i;
+	
 	/* ^SIS: 0,0,48,Remote Peer has closed the connection  服务器主动断开链接*/
 	/*if(((ptemp = memchr(gprs_info.rbuf_info.rbuf, 'R', gprs_info.rbuf_info.rbuf_index)) != NULL) &&
 		(*(ptemp+1) == 'e') &&
@@ -519,6 +522,9 @@ static bool lw_gprs_is_socket_closed(void)
 	com_send_message(2, gprs_info.rbuf_info.rbuf);*/
 	if (strstr(gprs_info.rbuf_info.rbuf, "closed") != NULL){
 		//gprs_info.send_status.socket_closed_by_srv = true;
+		return true;
+	}
+	else if (memstr(gprs_info.rbuf_info.rbuf, gprs_info.rbuf_info.rbuf_index, "closed", 6)) {
 		return true;
 	}
 
@@ -697,7 +703,7 @@ static void lw_check_gprs_stop(void)
 		pre_status = gprs_info.gprs_status;
 		g_status_count = 0;
 	}
-	if (g_status_count > 1000) {
+	if (g_status_count > 100) { /*看情况做调整计数值*/
 		MG323_POWERNORM();
 		delay(100);
 		MG323_POWERSWITCH();
@@ -721,6 +727,7 @@ static int32_t lw_set_socket_tp_mode(void)
 	Timer1=200;
 	while (Timer1) ;
 	lw_clean_gprs_rbuf();
+	lw_vc0706_clean_rbuf();
 	gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP;
 	gprs_send_cmd(1, MG323_TP_TRANS, strlen(MG323_TP_TRANS));
 
@@ -743,7 +750,7 @@ static int32_t lw_send_socket_tp_mode(void)
 	if (strstr(gprs_info.rbuf_info.rbuf, "OK") != NULL) {	
 		Timer1 = 200;
 		while(Timer1) ;
-		gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_FINISH;/*透传开始等待结束*/
+		gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SEND_MSG;
 		gprs_info.send_status.in_tp_mode = true;
 		lw_clean_gprs_rbuf();
 		debug_printf_m("start tp.");
@@ -751,6 +758,8 @@ static int32_t lw_send_socket_tp_mode(void)
 	}
 	else if (strstr(gprs_info.rbuf_info.rbuf, "ERR") != NULL) {
 		lw_clean_gprs_rbuf();
+		//lw_set_socket_tp_mode();
+		gprs_info.gprs_status = GPRS_STATUS_SOCKET_WILL_CLOSED;
 		ret = -2;
 	}
 	else {
@@ -761,18 +770,133 @@ static int32_t lw_send_socket_tp_mode(void)
 	return ret;
 }
 
+#define CAM_CMD_L "L:%X#"
+static int32_t lw_send_socket_tp_msg(void)
+{
+	extern volatile unsigned int Timer1, Timer2;
+
+	#define TEST_CMD_A "A:%s#"
+	#define TP_END_FLAG "+++"
+
+	bool finish;
+	uint32_t len;
+	uint8_t buf[20];
+	uint8_t imei[20];
+	uint8_t *p;
+
+	#define TP_GET_FRAME	0
+	#define TP_SEND_PREMSG	1
+	#define TP_SEND_MSG 	2
+	#define TP_SEND_END 	3
+	#define TP_FINISH	 	4
+	static uint8_t step = TP_GET_FRAME; 
+
+	
+	#if 0
+	static uint8_t cnt = 0;
+	static uint8_t testtp[512];
+	#endif
+
+	switch (step) {
+	case TP_GET_FRAME:
+		if(!lw_cam_get_frame()) { /*ok*/
+			step = TP_SEND_PREMSG;
+		}
+		break;
+	case TP_SEND_PREMSG:
+		/*传imei*/
+		memcpy(imei, gprs_info.imei, 15);
+		imei[15] = '\0';
+		sprintf(buf,TEST_CMD_A, imei);
+		gprs_send_cmd(1, buf, strlen(buf));
+
+		/*传jpg长度*/
+		sprintf(buf, CAM_CMD_L, lw_get_frame_len() + 5*2); /*5*2:头尾各5bytes*/
+		//sprintf(buf, CAM_CMD_L, 8); /*5*2:头尾各5bytes*/
+		gprs_send_cmd(1, buf, strlen(buf));
+
+		/*使能jpg帧数据*/
+		lw_cam_start_frame_();
+		
+		step = TP_SEND_MSG;
+		break;
+	case TP_SEND_MSG:
+		lw_clean_gprs_rbuf(); /*FIXME:注意处理返回的信息*/
+		
+		/*传jpg数据*/
+		#if 0
+		gprs_send_cmd(1, "abcdefgh", 8);
+		step = TP_SEND_END;
+		#elif 0
+		for(len=0;len<512;len++)	
+			testtp[len] = len%10+'0';
+		//for(len=0; len<30;len++) {
+			gprs_send_cmd(1, testtp, 512);
+			Timer1 = 100;
+			while(Timer1) ;
+		//}
+		if (cnt++ >= 30) {
+			step = TP_SEND_END;
+			cnt = 0;
+		}
+		#else
+		//lw_cam_start_frame_();
+		//do {
+			finish = lw_get_cam_data_to_gprs(&p, &len);
+			if (len) {
+				gprs_send_cmd(1, p, len);
+			Timer1 = 200;
+			while(Timer1) ;
+			}
+		//} while (false == finish); 
+		
+		if (true == finish) {
+			lw_cam_stop_frame_();
+			step = TP_SEND_END;
+		}
+		#endif
+
+		break;
+	case TP_SEND_END:
+		lw_clean_gprs_rbuf(); /*FIXME:注意处理返回的信息*/
+		
+		/*结束符号+++*/
+		Timer1 = 100;
+		while(Timer1) ;
+		gprs_send_cmd(1, TP_END_FLAG, strlen(TP_END_FLAG));
+		Timer1 = 100;
+		while(Timer1) ;
+		
+		step = TP_FINISH;
+		break;
+	case TP_FINISH:
+		step = TP_GET_FRAME;
+		gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_FINISH;
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
 static int32_t lw_set_socket_tp_mode_finish(void)
 {
 	if ((gprs_info.rbuf_info.rbuf_index < 6) || 
 		(gprs_info.rbuf_info.rbuf[gprs_info.rbuf_info.rbuf_index - 1] != 0x0A))
 		return -1;
 
-	gprs_info.rbuf_info.rbuf[GPRS_MAX_MSG_LEN - 1] = '\0';
-	if (strstr(gprs_info.rbuf_info.rbuf, "OK") != NULL) {	/*透传结束*/
+	//gprs_info.rbuf_info.rbuf[GPRS_MAX_MSG_LEN - 1] = '\0';
+	//if (strstr(gprs_info.rbuf_info.rbuf, "OK") != NULL) {	/*透传结束*/	
+	if ((gprs_info.rbuf_info.rbuf[gprs_info.rbuf_info.rbuf_index - 3] == 'K') &&
+		(gprs_info.rbuf_info.rbuf[gprs_info.rbuf_info.rbuf_index - 4] == 'O')) {
 		gprs_info.gprs_status = GPRS_STATUS_SOCKET_OPEN;
 		gprs_info.send_status.in_tp_mode = false;
 		lw_clean_gprs_rbuf();
 		debug_printf_m("end tp.");
+	}
+	else {
+		lw_clean_gprs_rbuf();
 	}
 
 	debug_printf_m("lw_set_socket_tp_mode_finish");
@@ -781,6 +905,7 @@ static int32_t lw_set_socket_tp_mode_finish(void)
 
 int32_t lw_gprs_tcp_create_send(void)
 {
+	static bool iscam = true;
 	int32_t  ret;
 	//gprs_info.gprs_status = GPRS_STATUS_NOINIT;
 
@@ -819,7 +944,8 @@ int32_t lw_gprs_tcp_create_send(void)
 		//return -2;
 	}*/
 	if(gprs_info.rbuf_info.rbuf[0] != 0 &&
-		gprs_info.rbuf_info.rbuf[gprs_info.rbuf_info.rbuf_index - 1] !=  0x0A){
+		gprs_info.rbuf_info.rbuf[gprs_info.rbuf_info.rbuf_index - 1] !=  0x0A ){
+		//&& !is_send_cam2pgrs()){
 		return -1; /* 未接收完信息 */
 	}
 		
@@ -882,15 +1008,23 @@ int32_t lw_gprs_tcp_create_send(void)
 			}
 			
 			if(gprs_info.send_status.socket_opend == true) {
+				if (iscam) {
 				if (is_send_cam2pgrs()) { /*优先发cam*/
 					lw_set_socket_tp_mode();
+					iscam = false;
 				}
-				else if(gprs_info.sbuf_info.sbuf_len > 0)
+				}
+				else if(gprs_info.sbuf_info.sbuf_len > 0) {
 					lw_send_socket_write(gprs_info.sbuf_info.sbuf_len);
+					iscam = true;
+				}
 			}
 			break;
 		case GPRS_STATUS_SOCKET_TP:
 			lw_send_socket_tp_mode();
+			break;
+		case GPRS_STATUS_SOCKET_TP_SEND_MSG:
+			lw_send_socket_tp_msg();
 			break;
 		case GPRS_STATUS_SOCKET_TP_FINISH:
 			lw_set_socket_tp_mode_finish();
@@ -964,8 +1098,8 @@ void lw_gprs_form_C_cmd(double lat, double lon, double speed,
 static int32_t lw_set_sbuf_imei(void)
 {
 
-	//#define TEST_CMD_A "A:123456789#"
-	#define TEST_CMD_A "D:123456789#"
+	#define TEST_CMD_A "A:123456789#"
+	//#define TEST_CMD_A "D:123456789#"
 	uint8_t A_tmp[50];
 	uint8_t tmp[50];
 	
@@ -977,8 +1111,8 @@ static int32_t lw_set_sbuf_imei(void)
 		{		
 			memcpy(A_tmp, gprs_info.imei, 15);
 			A_tmp[15] = '\0';
-			//sprintf(tmp, "A:%s#", A_tmp);	
-			sprintf(tmp, "D:%s#", A_tmp);	
+			sprintf(tmp, "A:%s#", A_tmp);	
+			//sprintf(tmp, "D:%s#", A_tmp);	
 			lw_set_gprs_sbuf(tmp);
 			//gprs_info.gprs_status = GPRS_STATUS_NETTYPE;
 			return 0;
@@ -1071,7 +1205,7 @@ bool lw_gprs_isidle(void)
 }
 
 
-#define CAM_CMD_L "L:%X#\x00D\x00A"
+//#define CAM_CMD_L "L:%X#\x00D\x00A"
 void lw_send_cam_cmd_L(uint32_t frame_len)
 {
 	uint8_t tmp[30];
@@ -1154,3 +1288,5 @@ testgprs[len] = len%10+'0';
 
 	return 0;
 }
+
+
