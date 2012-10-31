@@ -461,7 +461,7 @@ void TIM1_CC_IRQHandler(void)
 * Return         : None
 *******************************************************************************/
 volatile unsigned int Timer1, Timer2;
-volatile unsigned int cam_gps_tmr;
+volatile unsigned int cam_gps_tmr = 18000;
 void TIM2_IRQHandler(void)
 {
     if (TIM_GetITStatus(TIM2, TIM_IT_Update) != RESET){

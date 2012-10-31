@@ -21,6 +21,10 @@
 #include "stdint.h"
 #include "stdbool.h"
 
+
+#include "ctrl_gps_cam.h"
+
+
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
@@ -146,7 +150,7 @@ com_send_char(1, 0xa5a5);
 
 bool is_send_cam2pgrs(void)
 {
-	volatile unsigned int cam_gps_tmr;
+//	volatile unsigned int cam_gps_tmr;
 /*
 	static bool send_cam_now = false;
 	
@@ -178,6 +182,7 @@ int main(void)
 	NVIC_Config();
 	TIM2_Config();
 
+	ctrl_gps_cam_init();
 	
 #ifdef DEBUG
   debug();
@@ -330,7 +335,8 @@ com_send_message(1, "222");
 		Timer1 = 100;
 		while(Timer1);
 		//lw_cam_direct_to_gprs();
-		if (( lw_gps_test() == 0) || (is_send_cam2pgrs()))
+		ctrl_send_cam_or_gps_toggle();
+		if (( lw_gps_test() == 0) || is_send_cam() || is_send_gps())
 		{
 			//if((lw_nmea_test() ) == 0)
 			lw_nmea_test() ;

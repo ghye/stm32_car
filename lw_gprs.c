@@ -10,6 +10,7 @@
 
 #include "lw_gprs.h"
 #include "lw_stm32_uart.h"
+#include "ctrl_gps_cam.h"
 
 #define GPRS_MAX_MSG_LEN 512 //64
 #define GPS_MAX_MSG_LEN 0xff
@@ -69,6 +70,7 @@ typedef enum{
 struct _gprs_info{
 	bool ate0;
 	uint8_t imei[15];
+	bool send_imei_now;
 	GPRS_MODULE_STATUS gprs_status;
 	struct {
 		bool in_tp_mode;
@@ -151,12 +153,16 @@ void lw_gprs_init(void)
 	com_para.port = 1;//2;
 	com_para.twoStopBits = false;
 	com_init(&com_para);
-	
+
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
+	GPIO_Init(GPIOC, &GPIO_InitStructure);
+	GPIO_SetBits(GPIOC, GPIO_Pin_7);
 }
 
 void lw_start_gprs_mode(void)
 {
 	memset(&gprs_info, 0, sizeof(gprs_info));
+	gprs_info.send_imei_now = true;
 	gprs_info.gprs_status = GPRS_STATUS_NOINIT;
 	gprs_info.ate0 = 0;
 	gprs_info.send_status.quit_socket = false;
@@ -890,7 +896,10 @@ static int32_t lw_set_socket_tp_mode_finish(void)
 	//if (strstr(gprs_info.rbuf_info.rbuf, "OK") != NULL) {	/*透传结束*/	
 	if ((gprs_info.rbuf_info.rbuf[gprs_info.rbuf_info.rbuf_index - 3] == 'K') &&
 		(gprs_info.rbuf_info.rbuf[gprs_info.rbuf_info.rbuf_index - 4] == 'O')) {
-		gprs_info.gprs_status = GPRS_STATUS_SOCKET_OPEN;
+		if (is_send_cam() || is_send_gps())
+			gprs_info.gprs_status = GPRS_STATUS_SOCKET_OPEN;
+		else
+			gprs_info.gprs_status = GPRS_STATUS_SOCKET_WILL_CLOSED;
 		gprs_info.send_status.in_tp_mode = false;
 		lw_clean_gprs_rbuf();
 		debug_printf_m("end tp.");
@@ -905,7 +914,6 @@ static int32_t lw_set_socket_tp_mode_finish(void)
 
 int32_t lw_gprs_tcp_create_send(void)
 {
-	static bool iscam = true;
 	int32_t  ret;
 	//gprs_info.gprs_status = GPRS_STATUS_NOINIT;
 
@@ -963,8 +971,15 @@ int32_t lw_gprs_tcp_create_send(void)
 		return -1;
 	}
 
+	gprs_info.rbuf_info.rbuf[GPRS_MAX_MSG_LEN - 1] = '\0';
+	if ((strstr(gprs_info.rbuf_info.rbuf, "SHUTDOWN") != NULL) || 
+		(strstr(gprs_info.rbuf_info.rbuf, "SYSSTART") != NULL) ) {
+		gprs_info.gprs_status = GPRS_STATUS_NOINIT;
+		lw_clean_gprs_rbuf();
+	}
+
 	lw_check_gprs_stop();
-	
+
 	switch(gprs_info.gprs_status)
 	{
 		case GPRS_STATUS_NOINIT:
@@ -992,6 +1007,8 @@ int32_t lw_gprs_tcp_create_send(void)
 			lw_send_srvurl();
 			break;
 		case GPRS_STATUS_SRVURL:
+			if (!is_send_cam() && !is_send_gps())
+				break;
 			lw_send_socket_open();
 			break;
 		case GPRS_STATUS_SOCKET_OPEN:
@@ -1008,16 +1025,26 @@ int32_t lw_gprs_tcp_create_send(void)
 			}
 			
 			if(gprs_info.send_status.socket_opend == true) {
-				if (iscam) {
-				if (is_send_cam2pgrs()) { /*优先发cam*/
+				if (is_send_cam()) {
+					set_no_send_cam();
 					lw_set_socket_tp_mode();
-					iscam = false;
 				}
-				}
-				else if(gprs_info.sbuf_info.sbuf_len > 0) {
+				else
+				if(is_send_gps() && (gprs_info.sbuf_info.sbuf_len > 0)) {
+					if (false == gprs_info.send_imei_now) {
+						set_no_send_gps();
+					}
+					gprs_info.send_imei_now = false;
 					lw_send_socket_write(gprs_info.sbuf_info.sbuf_len);
-					iscam = true;
 				}
+				/*else if (is_send_cam()) {
+					set_no_send_cam();
+					lw_set_socket_tp_mode();
+				}*/
+				/*else {
+					lw_clean_gprs_rbuf();
+					gprs_info.gprs_status = GPRS_STATUS_SOCKET_CLOSE;
+				}*/
 			}
 			break;
 		case GPRS_STATUS_SOCKET_TP:
@@ -1041,7 +1068,12 @@ int32_t lw_gprs_tcp_create_send(void)
 			ret = lw_gprs_check_socket_send_msg();
 			if(ret == 0)
 			{
-				gprs_info.gprs_status = GPRS_STATUS_SOCKET_OPEN;
+				if (is_send_cam() || is_send_gps())
+					gprs_info.gprs_status = GPRS_STATUS_SOCKET_OPEN;
+				else {
+					gprs_info.gprs_status = GPRS_STATUS_SOCKET_CLOSE;
+					lw_clean_gprs_rbuf();
+				}
 			}
 			else if(ret == -2)	/* 出错*/
 			{
@@ -1115,6 +1147,7 @@ static int32_t lw_set_sbuf_imei(void)
 			//sprintf(tmp, "D:%s#", A_tmp);	
 			lw_set_gprs_sbuf(tmp);
 			//gprs_info.gprs_status = GPRS_STATUS_NETTYPE;
+			gprs_info.send_imei_now = true;
 			return 0;
 		}
 	}
