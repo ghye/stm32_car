@@ -13,9 +13,25 @@ void ctrl_gps_cam_init(void)
 	global_ctrl_info.isgps = true;
 }
 
+void ctrl_send_cam_or_gps_toggle_(void)
+{
+	#define GPS_INT 3000
+	#define CAM_INT 18000
+	extern volatile unsigned int cam_tmr;
+	extern volatile unsigned int gps_tmr;
+
+	if (!cam_tmr) {
+		cam_tmr = CAM_INT;
+		global_ctrl_info.iscam = true;
+	}
+	if (!gps_tmr) {
+		gps_tmr = GPS_INT;
+		global_ctrl_info.isgps = true;
+	}
+}
 void ctrl_send_cam_or_gps_toggle(void)
 {
-#if 1
+#if 0
 	#define GPS_INT 12000
 	extern volatile unsigned int cam_gps_tmr;
 	static uint16_t gpscnt = 0;
@@ -30,7 +46,7 @@ void ctrl_send_cam_or_gps_toggle(void)
 		global_ctrl_info.iscam = true;
 	}
 	
-#else
+#elif 0
 	#define CAM_INT 18000
 	#define GPS_INT 6000
 	

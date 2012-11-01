@@ -330,27 +330,21 @@ com_send_message(1, "222");
 #endif
 
 #if (defined(TEST_GPRS) &&  defined(TEST_CAM) && defined(TEST_GPS))
+	lw_seqed_msgs_init();
 	while(1){
 		extern volatile unsigned int Timer1, Timer2;
 		Timer1 = 100;
 		while(Timer1);
 		//lw_cam_direct_to_gprs();
-		ctrl_send_cam_or_gps_toggle();
+		ctrl_send_cam_or_gps_toggle_();
 		if (( lw_gps_test() == 0) || is_send_cam() || is_send_gps())
 		{
 			//if((lw_nmea_test() ) == 0)
 			lw_nmea_test() ;
-			lw_gprs_send_gps_test();
+			lw_gprs_send_gps_test_();
 
 		}
-	if(true == lw_gprs_isidle())
-	{
-		/*if(lw_cam_get_frame() == 0)
-			lw_gprs_send_cam_frame();*/
-		//while(lw_cam_stop_frame() != 0 ) ;
-		//while(1);
-			
-	}
+
 	}
 #endif
 

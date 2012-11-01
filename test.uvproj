@@ -465,6 +465,11 @@
               <FileType>1</FileType>
               <FilePath>.\stm32f10x_it.c</FilePath>
             </File>
+            <File>
+              <FileName>ctrl_gps_cam.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\ctrl_gps_cam.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

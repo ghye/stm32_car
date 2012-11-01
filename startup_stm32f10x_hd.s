@@ -1,4 +1,4 @@
-;******************** (C) COPYRIGHT 2011 STMicroelectronics ********************
+ ;******************** (C) COPYRIGHT 2011 STMicroelectronics ********************
 ;* File Name          : startup_stm32f10x_hd.s
 ;* Author             : MCD Application Team
 ;* Version            : V3.5.0
@@ -169,7 +169,8 @@ NMI_Handler     PROC
 HardFault_Handler\
                 PROC
                 EXPORT  HardFault_Handler          [WEAK]
-                B       .
+                ;B       .
+				BX LR
                 ENDP
 MemManage_Handler\
                 PROC

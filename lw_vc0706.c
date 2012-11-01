@@ -350,7 +350,7 @@ static void get_frame_len(uint8_t *buf)
 
 static int32_t lw_cam_waitfor_fbuf_ctrl(void)
 {
-	volatile unsigned int Timer1, Timer2;
+	extern volatile unsigned int Timer1, Timer2;
 
 	Timer1 = 500;
 	while (vc0706_info.rbuf_info.recv_point < 5 && Timer1)
@@ -367,7 +367,7 @@ static int32_t lw_cam_waitfor_fbuf_ctrl(void)
 
 static int32_t lw_cam_waitfor_get_len(void)
 {
-	volatile unsigned int Timer1, Timer2;
+	extern volatile unsigned int Timer1, Timer2;
 
 	Timer1 = 500;
 	while (vc0706_info.rbuf_info.recv_point < 5 && Timer1)

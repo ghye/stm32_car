@@ -113,7 +113,7 @@ int32_t lw_gps_test(void)
 	ret = lw_gps_get_rbuf(testgpsbuf);
 	if(0 == ret)
 	{
-	
+
 #define TESTRMC "$GPRMC,021115.000,A,2306.2713,N,11326.3310,E,0.00,,301012,,,D*74"
 memcpy(testgpsbuf, TESTRMC, strlen(TESTRMC));
 
