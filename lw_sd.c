@@ -1106,7 +1106,7 @@ uint32_t lw_sd_disk_get_fattime(void)
 
 #include "ff.h"
 
-FATFS Fatfs;        /* File system object */
+static FATFS Fatfs;        /* File system object */
 FIL Fil;            /* File object */
 uint8_t wBuff[512];     /* File read buffer */
 uint8_t rBuff[512];

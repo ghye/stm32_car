@@ -464,6 +464,7 @@ volatile unsigned int Timer1, Timer2;
 volatile unsigned int cam_tmr = 0;
 volatile unsigned int gps_tmr = 0;
 volatile unsigned int cam_gps_tmr;
+volatile unsigned int wait_l_cmd_timeout = 0;
 void TIM2_IRQHandler(void)
 {
     if (TIM_GetITStatus(TIM2, TIM_IT_Update) != RESET){
@@ -473,6 +474,7 @@ void TIM2_IRQHandler(void)
 	if(cam_gps_tmr) cam_gps_tmr--;
 	if (cam_tmr) cam_tmr--;
 	if (gps_tmr) gps_tmr--;
+	if (wait_l_cmd_timeout) wait_l_cmd_timeout--;
     }
     
 }

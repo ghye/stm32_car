@@ -13,7 +13,7 @@ void ctrl_gps_cam_init(void)
 	global_ctrl_info.isgps = true;
 }
 
-void ctrl_send_cam_or_gps_toggle_(void)
+void toggle_send_cam_gps(void)
 {
 	#define GPS_INT 3000
 	#define CAM_INT 18000

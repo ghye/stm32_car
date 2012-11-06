@@ -20,7 +20,10 @@ struct gps_info_ gps_info;
 
 void lw_gps_init(void)
 {
+	uint32_t i;
+	
 	com_para_t com_para;
+	GPIO_InitTypeDef GPIO_InitStructure;
 	
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
 	
@@ -30,6 +33,16 @@ void lw_gps_init(void)
 	com_para.port = 2;
 	com_para.twoStopBits = false;
 	com_init(&com_para);
+	
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+	GPIO_ResetBits(GPIOA, GPIO_Pin_1);
+	for (i=0;i<65536;i++)
+		;
+	GPIO_SetBits(GPIOA, GPIO_Pin_1);
 
 }
 
@@ -96,11 +109,11 @@ int32_t lw_gps_send()
 #if 1
 uint8_t testgpsbuf[GPS_MAX_MSG_LEN];
 #include "./ais/proto.h"
-uint8_t *lw_gps_get_result_buf(void)
+uint8_t *lw_get_gps_buf(void)
 {
 	return testgpsbuf;
 }
-int32_t lw_gps_test(void)
+int32_t lw_get_gps_sentence(void)
 {
 	int32_t ret = -1;
 /*
@@ -109,13 +122,13 @@ int32_t lw_gps_test(void)
 	struct gps_device_t session;
 	int8_t * nmea_buf = testgpsbuf;
 */
-	memset(testgpsbuf, 0, GPS_MAX_MSG_LEN);
+	memset(testgpsbuf, '\0', GPS_MAX_MSG_LEN);
 	ret = lw_gps_get_rbuf(testgpsbuf);
 	if(0 == ret)
 	{
-
+/*
 #define TESTRMC "$GPRMC,021115.000,A,2306.2713,N,11326.3310,E,0.00,,301012,,,D*74"
-memcpy(testgpsbuf, TESTRMC, strlen(TESTRMC));
+memcpy(testgpsbuf, TESTRMC, strlen(TESTRMC));*/
 
 /*		com_send_message(1, "gps:");
 		com_send_message(1, testgpsbuf);*/
@@ -148,4 +161,13 @@ memcpy(testgpsbuf, TESTRMC, strlen(TESTRMC));
 
 	return ret;
 }
+
+void  lw_gps_parse(void)
+{
+	if (lw_get_gps_sentence() == 0)
+	{
+		lw_nmea_parse();
+	}
+}
 #endif
+

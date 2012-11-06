@@ -5,7 +5,7 @@
 //#include <stdboot.h>
 #include "./ais/common.h"
 
-int32_t lw_nmea_test(void);
+int32_t lw_nmea_parse(void);
 
 #endif
 

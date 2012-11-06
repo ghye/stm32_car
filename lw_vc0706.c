@@ -37,6 +37,7 @@ enum vc0706_status {
 
 struct vc0706_info_{
 	enum vc0706_status status;
+	bool lock;
 	struct {
 		uint8_t rbuf[VC0706_MAX_CMD_LEN];
 		//uint8_t rbuf_len;
@@ -104,6 +105,7 @@ void lw_vc0706_param_init(void)
 {
 	memset(&vc0706_info, 0, sizeof(vc0706_info));
 	vc0706_info.status = VC0706_STATUS_NOINIT;
+	vc0706_info.lock = false;
 }
 
 static uint32_t lw_vc0706_fill_command(uint8_t *buf, uint8_t vc0706_flag,
@@ -420,22 +422,6 @@ int32_t lw_cam_get_frame(void)
 	return 0;
 }
 
-int32_t lw_cam_start_frame(void)
-{
-	uint32_t frame_len = vc0706_info.rbuf_info.frame_len + 10;
-	
-	VC0706_RXNE_IRQ_DISABLE();
-
-frame_len = 24;
-	lw_send_cam_cmd_L(frame_len);
-	lw_grps_send_cam_frame_len(frame_len);
-	delay(20);
-	lw_cam2gprs_set_dma(frame_len);
-	lw_cam2gprs_dma_enable();
-	lw_vc0706_send_read_fbuf();
-
-	return 0;
-}
 
 int32_t lw_cam_start_frame_(void)
 {
@@ -454,17 +440,6 @@ int32_t lw_cam_stop_frame_(void)
 
 	return 0;
 }
-int32_t lw_cam_stop_frame(void)
-{
-	if(lw_cam2gprs_is_finished() == 0 )
-	{
-		lw_cam2gprs_dma_disable();
-		return 0;
-	}
-
-	return -1;
-}
-
 
 bool lw_get_cam_data(uint8_t **buf, uint32_t *buflen)
 {
@@ -546,6 +521,4 @@ bool lw_get_cam_data_to_gprs(uint8_t **buf, uint32_t *buflen)
 
 	return finish;	
 }
-
-
 

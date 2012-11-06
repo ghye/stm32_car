@@ -6,12 +6,12 @@
 //#include "nmea0813.h"
 
 struct gps_device_t session;
-int32_t lw_nmea_test(void)
+int32_t lw_nmea_parse(void)
 {
 	int32_t nmea_ret;
 	uint8_t *pgps;
 
-	pgps = lw_gps_get_result_buf();
+	pgps = lw_get_gps_buf();
 	session.packet.type = NMEA_PACKET;
 	memcpy(session.packet.outbuffer, pgps, strlen(pgps));
 	session.packet.outbuffer[strlen(pgps)] = '\0';
