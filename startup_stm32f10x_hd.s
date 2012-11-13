@@ -33,7 +33,7 @@
 ; </h>
 
 ; Stack_Size      EQU     0x00000400
-Stack_Size      EQU     0x00000600
+Stack_Size      EQU     0x00000800
 
                 AREA    STACK, NOINIT, READWRITE, ALIGN=3
 Stack_Mem       SPACE   Stack_Size
@@ -169,8 +169,8 @@ NMI_Handler     PROC
 HardFault_Handler\
                 PROC
                 EXPORT  HardFault_Handler          [WEAK]
-                ;B       .
-				BX LR
+                B       .
+				;BX LR
                 ENDP
 MemManage_Handler\
                 PROC
