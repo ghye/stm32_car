@@ -18,6 +18,7 @@
 /* Includes ------------------------------------------------------------------*/
 //#include "stm32f10x_it.h"
 #include "stm32f10x.h"
+#include "projects_conf.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -293,6 +294,14 @@ void DMA1_Channel2_IRQHandler(void)
 *******************************************************************************/
 void DMA1_Channel3_IRQHandler(void)
 {
+#if defined (STM_SHIP)
+	#include "lw_stm32_dma.h"
+	
+	if(DMA_GetITStatus(DMA1_IT_TC3)) {
+		ais_rx_reload_dma();
+		DMA_ClearITPendingBit(DMA1_IT_GL3 | DMA1_IT_GL3 | DMA1_IT_HT3 | DMA1_IT_TE3);
+	}
+#endif
 }
 
 /*******************************************************************************
@@ -326,6 +335,7 @@ void DMA1_Channel5_IRQHandler(void)
 *******************************************************************************/
 void DMA1_Channel6_IRQHandler(void)
 {
+
 }
 
 /*******************************************************************************
@@ -465,6 +475,7 @@ volatile unsigned int cam_tmr = 0;
 volatile unsigned int gps_tmr = 0;
 volatile unsigned int cam_gps_tmr;
 volatile unsigned int wait_l_cmd_timeout = 0;
+volatile unsigned int check_gps_signal = 3000;
 void TIM2_IRQHandler(void)
 {
     if (TIM_GetITStatus(TIM2, TIM_IT_Update) != RESET){
@@ -475,6 +486,7 @@ void TIM2_IRQHandler(void)
 	if (cam_tmr) cam_tmr--;
 	if (gps_tmr) gps_tmr--;
 	if (wait_l_cmd_timeout) wait_l_cmd_timeout--;
+	if (check_gps_signal) check_gps_signal--;
     }
     
 }

@@ -6,6 +6,7 @@
 #include "stm32f10x_rcc.h"
 
 #include "lw_stm32_uart.h"
+#include "projects_conf.h"
 
 uint32_t testbuf = 0;
 
@@ -96,9 +97,12 @@ void usart3_init(USART_InitTypeDef *USART_InitStructure)
 	// USART configuration
 	USART_Init(USART3, USART_InitStructure);		
 
+#if defined(STM_SHIP)
+#else
 	// Enable USART3 Receive and Transmit interrupts
 	USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
 	//USART_ITConfig(USART3, USART_IT_TXE, ENABLE);
+#endif
 
 	// Enable USART
 	USART_Cmd(USART3, ENABLE);		
@@ -328,6 +332,7 @@ void USART2_IRQHandler(void)
 
 void USART3_IRQHandler(void)
 {
+#if defined (STM_CAR)
 #include "lw_vc0706.h"
 	if(USART_GetITStatus(USART3, USART_IT_RXNE) != RESET)
 	{
@@ -335,6 +340,8 @@ void USART3_IRQHandler(void)
 		lw_vc0706_recv(USART_ReceiveData(USART3));
 		//lw_get_cam_data_from_hw(USART_ReceiveData(USART3));
 	}
+#else
+#endif
 }
 
 

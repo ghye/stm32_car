@@ -12,6 +12,9 @@
 #include "lw_stm32_spi.h"
 #include "lw_vc0706.h"
 #include "ctrl_gps_cam.h"
+#include "lw_ais.h"
+#include "lw_stm32_dma.h"
+#include "projects_conf.h"
 
 void NVIC_Config(void)
 {
@@ -24,11 +27,12 @@ void NVIC_Config(void)
     NVIC_SetVectorTable(NVIC_VectTab_FLASH, 0x0);
 #endif
     /* Configure the NVIC Preemption Priority Bits[配置优先级组] */
-    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
+    //NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
+    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
 
     /* Enable the TIM2 gloabal Interrupt [允许TIM2全局中断]*/
     NVIC_InitStructure.NVIC_IRQChannel = TIM2_IRQn;//Channel;
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
     NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStructure);
@@ -74,9 +78,17 @@ void board_init(void)
 	
 	lw_gps_init();
 	lw_gps_param_init();
-	
+
+#if defined (STM_SHIP)	
+	ais_global_init();
+	ais_rx_init();
+	ais_rx_tx_dma_init();
+	ais_rx_set_dma();
+	ais_tx_set_dma();
+#else
 	lw_vc0706_init();
 	lw_vc0706_param_init();	
+#endif
 
 	ctrl_gps_cam_init();
 

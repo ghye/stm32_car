@@ -1,4 +1,5 @@
 #include "stdint.h"
+#include "projects_conf.h"
 
 extern volatile unsigned int Timer1, Timer2;
 
@@ -55,7 +56,11 @@ int main(void)
 			while(1) ;
 		}
 		Timer1 = 100;
-		while(Timer1);
+		while(Timer1) {
+			#if defined(STM_SHIP)
+			ais_seqed_proc();
+			#endif
+		}
 
 		debug_printf_m("start loop");
 		lw_gps_parse();

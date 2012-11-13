@@ -4,11 +4,17 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-void lw_cam2gprs_dma_init(void);
-void lw_cam2gprs_set_dma(uint32_t dma_size);
-void lw_cam2gprs_dma_enable(void);
-void lw_cam2gprs_dma_disable(void);
-int32_t lw_cam2gprs_is_finished(void);
+void ais_rx_tx_dma_init(void);
+void ais_rx_set_dma(void);
+void ais_rx_reload_dma(void);
+void ais_rx_dma_enable(void);
+void ais_rx_dma_disable(void);
+bool ais_rx_is_finished(void);
+void ais_tx_set_dma(void);
+void ais_tx_reload_dma(void);
+void ais_tx_dma_enable(void);
+void ais_tx_dma_disable(void);
+bool ais_tx_is_finished(void);
 
 #endif
 

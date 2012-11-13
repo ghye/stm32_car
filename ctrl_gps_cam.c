@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include "projects_conf.h"
 
 struct _global_ctrl_info {
 	bool iscam;
@@ -20,10 +21,13 @@ void toggle_send_cam_gps(void)
 	extern volatile unsigned int cam_tmr;
 	extern volatile unsigned int gps_tmr;
 
+#if defined(STM_CAR)
 	if (!cam_tmr) {
 		cam_tmr = CAM_INT;
 		global_ctrl_info.iscam = true;
 	}
+#endif
+
 	if (!gps_tmr) {
 		gps_tmr = GPS_INT;
 		global_ctrl_info.isgps = true;

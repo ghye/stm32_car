@@ -1,3 +1,6 @@
+#include "projects_conf.h"
+
+#if defined (STM_CAR)
 #include <stdio.h>
 #include <string.h>
 #include "stm32f10x_usart.h"
@@ -392,7 +395,7 @@ int32_t lw_cam_get_frame(void)
 	unsigned int Timer1, Timer2;
 	
 	lw_vc0706_send_system_reset();
-	Timer1 = 20;
+	Timer1 = 200;
 	while(Timer1);
 	
 	//lw_vc0706_send_set_ratio(0xFF);
@@ -521,4 +524,6 @@ bool lw_get_cam_data_to_gprs(uint8_t **buf, uint32_t *buflen)
 
 	return finish;	
 }
+
+#endif
 

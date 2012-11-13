@@ -115,6 +115,7 @@ uint8_t *lw_get_gps_buf(void)
 }
 int32_t lw_get_gps_sentence(void)
 {
+	extern volatile unsigned int check_gps_signal;
 	int32_t ret = -1;
 /*
 	int32_t nmea_ret;
@@ -122,16 +123,26 @@ int32_t lw_get_gps_sentence(void)
 	struct gps_device_t session;
 	int8_t * nmea_buf = testgpsbuf;
 */
+	if (!check_gps_signal) {
+		GPIO_ResetBits(GPIOC, GPIO_Pin_7);
+		check_gps_signal = 200;
+		while (check_gps_signal) ;
+		GPIO_SetBits(GPIOC, GPIO_Pin_7);
+		check_gps_signal = 2000;
+	}
+	
 	memset(testgpsbuf, '\0', GPS_MAX_MSG_LEN);
 	ret = lw_gps_get_rbuf(testgpsbuf);
 	if(0 == ret)
 	{
+		check_gps_signal = 2000;
 /*
 #define TESTRMC "$GPRMC,021115.000,A,2306.2713,N,11326.3310,E,0.00,,301012,,,D*74"
 memcpy(testgpsbuf, TESTRMC, strlen(TESTRMC));*/
 
 /*		com_send_message(1, "gps:");
-		com_send_message(1, testgpsbuf);*/
+		com_send_message(1, testgpsbuf);
+*/
 
 #if 0
 		session.packet.type = NMEA_PACKET;

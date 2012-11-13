@@ -12,6 +12,7 @@
 #include "log.h"
 #include "lw_stm32_uart.h"
 #include "ctrl_gps_cam.h"
+#include "projects_conf.h"
 
 #define GPRS_MAX_MSG_LEN 512 //64
 #define GPS_MAX_MSG_LEN 0xff
@@ -318,12 +319,16 @@ void lw_get_gps_to_sbuf(void)
 
 static void lw_send_ate0(void)
 {
+	extern volatile unsigned int Timer1, Timer2;
+	
 	gprs_info.gprs_status = GPRS_STATUS_ATE;
 	gprs_send_cmd(1, ATE0, strlen(ATE0));
 }
 
 static void lw_send_get_imei(void)
 {
+	extern volatile unsigned int Timer1, Timer2;
+	
 	if(lw_get_seqed_msg("OK") /*返回OK*/)
 	{
 		gprs_info.gprs_status = GPRS_STATUS_GET_IMEI;
@@ -332,7 +337,7 @@ static void lw_send_get_imei(void)
 	}
 	else
 	{
-		gprs_send_cmd(1, ATE0, strlen(ATE0));
+		//gprs_send_cmd(1, ATE0, strlen(ATE0));
 	}
 }
 
@@ -342,7 +347,8 @@ static bool lw_gprs_get_imei(void)
 	uint8_t tmp[20];
 	
 	for(i=0;i<seqed_msgs.msgs_num;i++) {
-		if (isdigit(seqed_msgs.msgs[i][2]) && isdigit(seqed_msgs.msgs[i][10]) ) {
+		//if (isdigit(seqed_msgs.msgs[i][2]) && isdigit(seqed_msgs.msgs[i][10]) ) {
+		if ((seqed_msgs.msgs[i][2] > 0) && (seqed_msgs.msgs[i][10]) > 0) {
 			memcpy(gprs_info.imei, seqed_msgs.msgs[i], 15);
 			com_send_message(1, "imei:");
 			memcpy(tmp, gprs_info.imei, 15);
@@ -358,80 +364,110 @@ static bool lw_gprs_get_imei(void)
 
 static void lw_send_nettype(void)
 {
-	if(lw_gprs_get_imei())
-	{
-		gprs_info.gprs_status = GPRS_STATUS_NETTYPE;
-		gprs_send_cmd(1, SET_NETTYPE, strlen(SET_NETTYPE));
+	extern volatile unsigned int Timer1, Timer2;
+
+	if (lw_get_seqed_msg("OK")) {
+		if(lw_gprs_get_imei())
+		{
+			gprs_info.gprs_status = GPRS_STATUS_NETTYPE;
+			gprs_send_cmd(1, SET_NETTYPE, strlen(SET_NETTYPE));
+		}
+		else 
+			gprs_send_cmd(1, GET_IMEI, strlen(GET_IMEI));
 	}
 	else
 	{
-		gprs_send_cmd(1, GET_IMEI, strlen(GET_IMEI));
+		//gprs_send_cmd(1, GET_IMEI, strlen(GET_IMEI));
 	}
 }
 
 static void lw_send_apntype(void)
 {
+	extern volatile unsigned int Timer1, Timer2;
+	
 	if(lw_get_seqed_msg("OK")/*收到OK*/)
 	{
 		gprs_info.gprs_status = GPRS_STATUS_APNTYPE;
 		gprs_send_cmd(1, SET_APNTYPE, strlen(SET_APNTYPE));
 	}
-	else
+	else if (lw_get_seqed_msg("ERROR"))
 	{
 		gprs_send_cmd(1, SET_NETTYPE, strlen(SET_NETTYPE));
+	}
+	else {
+
 	}
 }
 
 static void lw_send_srvtype(void)
 {
+	extern volatile unsigned int Timer1, Timer2;
+	
 	if(lw_get_seqed_msg("OK") /*收到OK*/)
 	{
 		gprs_info.gprs_status = GPRS_STATUS_SRVTYPE;
 		gprs_send_cmd(1, SET_SRVTYPE, strlen(SET_SRVTYPE));
 	}
-	else
+	else if (lw_get_seqed_msg("ERROR"))
 	{
 		gprs_send_cmd(1, SET_APNTYPE, strlen(SET_APNTYPE));
 	}
+	else {
 
+	}
 }
 
 static void lw_send_conid(void)
 {
+	extern volatile unsigned int Timer1, Timer2;
+	
 	if(lw_get_seqed_msg("OK") /*收到OK*/)
 	{
 		gprs_info.gprs_status = GPRS_STATUS_CONID;
 		gprs_send_cmd(1, SET_CONID, strlen(SET_CONID));
 	}
-	else
+	else if (lw_get_seqed_msg("ERROR"))
 	{
 		gprs_send_cmd(1, SET_SRVTYPE, strlen(SET_SRVTYPE));
+	}
+	else {
+
 	}
 }
 
 static void lw_send_srvurl(void)
 {
+	extern volatile unsigned int Timer1, Timer2;
+	
 	if(lw_get_seqed_msg("OK") /*收到OK*/)
 	{
 		gprs_info.gprs_status = GPRS_STATUS_SRVURL;
 		gprs_send_cmd(1, SET_SRV_URL_1, strlen(SET_SRV_URL_1));
 	}
-	else
+	else if (lw_get_seqed_msg("ERROR"))
 	{
 		gprs_send_cmd(1, SET_CONID, strlen(SET_CONID));
+	}
+	else {
+
 	}
 }
 
 static void lw_send_socket_open(void)
 {
+	extern volatile unsigned int Timer1, Timer2;
+	
 	if(lw_get_seqed_msg("OK") /*收到OK*/)
 	{
 		gprs_info.gprs_status = GPRS_STATUS_SOCKET_OPEN;
 		gprs_send_cmd(1, OPEN_CON0, strlen(OPEN_CON0));
 	}
-	else
+	else if (lw_get_seqed_msg("ERROR"))
 	{
 		gprs_send_cmd(1, SET_SRV_URL_1, strlen(SET_SRV_URL_1));
+	}
+	else {
+
 	}
 }
 
@@ -504,6 +540,7 @@ static void get_cam_strem_pre_init(void)
 	wait_l_cmd = false;
 }
 
+#if defined(STM_CAR)
 /*
 	0:finish
 	-1:err
@@ -522,7 +559,7 @@ static int32_t get_cam_stream(void)
 		do {
 			finish = lw_get_cam_data_to_gprs(&p, &len);
 			if (!len && !finish) {
-				Timer1 = 1000;
+				Timer1 = 100;
 				while(Timer1) ;
 				if (cnt++ >= 10) {
 					goto err;
@@ -558,6 +595,7 @@ err:
 	lw_cam_stop_frame_();
 	return -1;
 }
+#endif
 
 /*
 	-1:err
@@ -577,6 +615,7 @@ static void send_cam_stream_param_init(void)
 
 static int32_t lw_gprs_send_cam(void)
 {
+#if defined(STM_CAR)
 	extern volatile unsigned int Timer1, Timer2;
 
 	#define TEST_CMD_A "A:%s#"
@@ -657,6 +696,10 @@ static int32_t lw_gprs_send_cam(void)
 	}
 
 	return ret;
+	
+#else
+	return 0;
+#endif
 }
 
 static bool lw_gprs_sending_gps(uint8_t *buf, uint32_t buflen) 
@@ -683,7 +726,7 @@ static void lw_check_gprs_close(void)
 		gprs_send_cmd(1, CLOSE_CON0, strlen(CLOSE_CON0));
 	}
 	else {
-		gprs_send_cmd(1, CLOSE_CON0, strlen(CLOSE_CON0));
+		//gprs_send_cmd(1, CLOSE_CON0, strlen(CLOSE_CON0));
 	}
 }
 
@@ -760,11 +803,13 @@ int32_t lw_gprs_tcp_send_data(void)
 				gprs_info.send_imei_now = false;
 				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SEND_GPS;
 			}
+			#if defined(STM_CAR)
 			else if (is_send_cam()) {
 				set_no_send_cam();
 				send_cam_stream_param_init();
 				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SEND_CAM;
 			}
+			#endif
 			else if (is_send_gps() && (gprs_info.sbuf_info.sbuf_len > 0)) {
 				set_no_send_gps();
 				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SEND_GPS;

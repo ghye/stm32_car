@@ -6,6 +6,7 @@
 #include "lw_sd.h"
 #include "lw_stm32_spi.h"
 #include "lw_stm32_uart.h"
+#include "projects_conf.h"
 
 #define TIMEOUT 9000
 
@@ -1139,6 +1140,7 @@ int32_t lw_sd_fatfs_deinit(void)
 
 int32_t lw_get_frame2sd(void)
 {
+#if defined (STM_CAR)
 	#include "lw_vc0706.h"
 	
 	bool finish;
@@ -1240,6 +1242,10 @@ int32_t lw_get_frame2sd(void)
 
 	lw_sd_fatfs_deinit();
 	return 0;
+
+#else
+	return 0;
+#endif
 }
 
 void lw_sd_with_fatfs_test(void)
@@ -1376,7 +1382,46 @@ while(1){
 #endif
 }
 
+#if defined (STM_SHIP)
+int32_t test_save_ais2sd(const uint8_t *buf, uint32_t len)
+{	static bool i=false;
+	uint32_t bw;
+	FIL Fil;            /* File object */
+	FRESULT rc;             /* Result code */
+	uint8_t file_name[16];
+	if(!i) {
+	
+	if (lw_sd_fatfs_init())
+		return -1;
+	i = true;
+	}
+	sprintf(file_name, "aivdm.txt");
+	if (f_open(&Fil, file_name, FA_WRITE | FA_OPEN_ALWAYS)) {
+		lw_sd_fatfs_deinit();
+		return -1;
+	}
 
+	rc = f_lseek(&Fil, f_size(&Fil));
+	if (rc) {
+		f_close(&Fil);
+		lw_sd_fatfs_deinit();
+		return -1;
+	}
 
+	
+	rc = f_write(&Fil, buf, len, &bw);
+	if (rc) {
+		f_close(&Fil);
+		lw_sd_fatfs_deinit();
+		return -1;
+	}
+
+	f_close(&Fil);
+
+	//lw_sd_fatfs_deinit();
+
+	return 0;
+}
+#endif
 
 																				 	
