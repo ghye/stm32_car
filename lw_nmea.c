@@ -28,6 +28,9 @@ int32_t lw_nmea_parse(void)
 				session.nmea.nmea_u.gprmc.lon, session.nmea.nmea_u.gprmc.speed, 
 				session.nmea.nmea_u.gprmc.track /*航向*/, 
 				(session.nmea.nmea_u.gprmc.status==STATUS_FIX) ? 1:0 /*数据状态: 1:有效，0:无效*/);
+			save_jpg_ext_msg_gps((float)session.nmea.nmea_u.gprmc.lat, 
+				(float)session.nmea.nmea_u.gprmc.lon, (float)session.nmea.nmea_u.gprmc.speed, 
+				(float)session.nmea.nmea_u.gprmc.track /*航向*/);
 			break;
 			default:
 			break;

@@ -38,9 +38,15 @@ enum vc0706_status {
 	VC0706_STATUS_TRANS_FINISHED,
 };
 
+enum vc0706_lock_by {
+	BY_NONE = 0,
+	BY_GPRS_LIVE,
+	BY_SD_RECORD,
+};
+
 struct vc0706_info_{
 	enum vc0706_status status;
-	bool lock;
+	enum vc0706_lock_by lock_by;
 	struct {
 		uint8_t rbuf[VC0706_MAX_CMD_LEN];
 		//uint8_t rbuf_len;
@@ -56,6 +62,51 @@ struct vc0706_info_{
 	}sbuf_info;
 };
 struct vc0706_info_ vc0706_info;
+
+void set_vc0706_lock_by_gprs(void)
+{
+	vc0706_info.lock_by = BY_GPRS_LIVE;
+}
+
+void set_vc0706_lock_by_sd(void)
+{
+	vc0706_info.lock_by = BY_SD_RECORD;
+}
+
+void set_vc0706_unlock(void)
+{
+	vc0706_info.lock_by = BY_NONE;
+}
+
+bool is_vc0706_lock_by_gprs(void)
+{
+	if (vc0706_info.lock_by == BY_GPRS_LIVE)
+		return true;
+	else 
+		return false;
+}
+
+bool is_vc0706_lock_by_sd(void)
+{
+	if (vc0706_info.lock_by == BY_SD_RECORD)
+		return true;
+	else
+		return false;
+}
+
+bool is_vc0706_unlock(void)
+{
+	if (vc0706_info.lock_by == BY_NONE)
+		return true;
+	else
+		return false;
+}
+
+void get_vc0706_rbuf_info(uint8_t **p, uint32_t *len)
+{
+	*p = vc0706_info.rbuf_info.rbuf;
+	*len = VC0706_MAX_CMD_LEN;
+}
 
 uint32_t lw_get_frame_len(void)
 {
@@ -108,7 +159,8 @@ void lw_vc0706_param_init(void)
 {
 	memset(&vc0706_info, 0, sizeof(vc0706_info));
 	vc0706_info.status = VC0706_STATUS_NOINIT;
-	vc0706_info.lock = false;
+	//vc0706_info.lock = false;
+	set_vc0706_unlock();
 }
 
 static uint32_t lw_vc0706_fill_command(uint8_t *buf, uint8_t vc0706_flag,

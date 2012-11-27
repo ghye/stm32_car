@@ -62,6 +62,7 @@ typedef enum{
 	GPRS_STATUS_SOCKET_OPEN_SUCC,
 	GPRS_STATUS_SOCKET_TP,
 	GPRS_STATUS_SOCKET_TP_SUCC,
+	GPRS_STATUS_SOCKET_TP_SEND_SDJPG,
 	GPRS_STATUS_SOCKET_TP_SEND_CAM,
 	GPRS_STATUS_SOCKET_TP_SEND_GPS,
 	GPRS_STATUS_SOCKET_TP_SEND_MSG,
@@ -180,7 +181,7 @@ void lw_form_seqed_msgs(void)
 	}
 }
 
-static bool lw_get_seqed_msg(uint8_t *p)
+bool lw_get_seqed_msg(uint8_t *p)
 {
 	uint32_t i;
 	
@@ -280,6 +281,10 @@ void lw_start_gprs_mode(void)
 //#define gprs_send_cmd(x, y) com_send_string(x, y)
 #define gprs_send_cmd(x, y,z ) {com_send_nchar(x, y, z);log_write_snd(y,z);}
 
+void gprs_send_cmd_f(uint8_t num, uint8_t *p, uint32_t len)
+{
+	gprs_send_cmd(num, p, len);
+}
 
 static int32_t lw_set_sbuf_imei(void)
 {
@@ -702,6 +707,35 @@ static int32_t lw_gprs_send_cam(void)
 #endif
 }
 
+bool cam_ready_used_save_sd(void)
+{
+	if (lw_cam_get_frame())
+		return false;
+	lw_cam_start_frame_();
+	return true;
+}
+
+bool get_cam_used_save_sd(uint8_t **buf, uint32_t *len)
+{
+	bool finish;
+	int8_t cnt = 0;
+	
+	do {
+		finish = lw_get_cam_data_to_gprs(buf, len);
+		if (!*len && !finish) {
+			Timer1 = 100;
+			while(Timer1) ;
+			if (cnt++ >= 10) {
+				break;
+			}
+		}
+	} while(!*len && !finish);
+
+	if (finish || !*len)
+		lw_cam_stop_frame_();
+	return finish;
+}
+
 static bool lw_gprs_sending_gps(uint8_t *buf, uint32_t buflen) 
 {
 	gprs_send_cmd(1, buf, buflen);
@@ -741,8 +775,28 @@ static void lw_gprs_send_tp_end(void)
 	while(Timer1) ;
 }
 
+static void check_gprs_status_err(void)
+{
+	extern volatile unsigned int Timer1;
+	extern volatile unsigned int gprs_status_timer;
+	static int8_t old_status;
+
+	if (old_status != gprs_info.gprs_status) {
+		old_status = gprs_info.gprs_status;
+		gprs_status_timer = 18000;
+	}
+	if (!gprs_status_timer) {
+		gprs_info.gprs_status = GPRS_STATUS_NOINIT;
+		GPIO_ResetBits(GPIOC, GPIO_Pin_7);
+		Timer1 = 100;
+		while (Timer1) ;
+		GPIO_SetBits(GPIOC, GPIO_Pin_7);
+	}
+}
+
 int32_t lw_gprs_tcp_send_data(void)
 {
+	extern volatile unsigned int gprs_offline_20min_timer;
 	int32_t ret;
 	
 	debug_printf_m("start lw_gprs_tcp_send_data");	
@@ -753,6 +807,9 @@ int32_t lw_gprs_tcp_send_data(void)
 	else if (lw_get_seqed_msg("closed")) {
 		gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_FINISH;
 	}
+	else {
+		check_gprs_status_err();
+	}
 
 	debug_printf_s("gprs_status=");
 	debug_printf_h(gprs_info.gprs_status);
@@ -760,7 +817,9 @@ int32_t lw_gprs_tcp_send_data(void)
 	switch(gprs_info.gprs_status)
 	{
 		case GPRS_STATUS_NOINIT:
-			if (!is_send_cam() && !is_send_gps() && !(gprs_info.send_imei_now))
+			if (is_vc0706_lock_by_gprs())
+				set_vc0706_unlock();
+			if (!is_send_cam() && !is_send_gps() && !have_jpg_from_sd_to_send() && !(gprs_info.send_imei_now))
 				break;
 			lw_start_gprs_mode();
 			lw_seqed_msgs_init();
@@ -799,12 +858,17 @@ int32_t lw_gprs_tcp_send_data(void)
 			lw_gprs_check_socket_tp_mode_succ();
 			break;
 		case GPRS_STATUS_SOCKET_TP_SUCC:
+			gprs_offline_20min_timer = 18000;//120000;
 			if (true == gprs_info.send_imei_now) {
 				gprs_info.send_imei_now = false;
 				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SEND_GPS;
 			}
 			#if defined(STM_CAR)
-			else if (is_send_cam()) {
+			else if (send_jpg_from_sd_init()) {
+				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SEND_SDJPG;
+			}
+			else if ((is_vc0706_lock_by_gprs() || is_vc0706_unlock()) && is_send_cam()) {
+				set_vc0706_lock_by_gprs();
 				set_no_send_cam();
 				send_cam_stream_param_init();
 				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SEND_CAM;
@@ -819,12 +883,29 @@ int32_t lw_gprs_tcp_send_data(void)
 			}
 
 			break;
+		case GPRS_STATUS_SOCKET_TP_SEND_SDJPG:
+			ret = send_jpg_from_sd();
+			if (1 == ret) {
+				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SUCC;
+			}
+			else if (0 == ret) {
+
+			}
+			else if (-1 == ret) {
+				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_FINISH;
+			}
+			else if (-2 == ret) {
+				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SUCC;
+			}
+			break;
 		case GPRS_STATUS_SOCKET_TP_SEND_CAM:
 			ret = lw_gprs_send_cam();
 			if (ret == 0){
+				set_vc0706_unlock();
 				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SUCC;
 			}
 			else if (ret == -1) {
+				set_vc0706_unlock();
 				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_FINISH;
 			}
 
@@ -851,6 +932,14 @@ int32_t lw_gprs_tcp_send_data(void)
 	}
 
 	return 0;
+}
+
+bool gprs_offline_20min(void)
+{
+	extern volatile unsigned int gprs_offline_20min_timer;
+	if (!gprs_offline_20min_timer)
+		return true;
+	return false;
 }
 
 void lw_process_gprs_rbuf(uint8_t val)

@@ -470,12 +470,15 @@ void TIM1_CC_IRQHandler(void)
 * Output         : None
 * Return         : None
 *******************************************************************************/
+volatile unsigned int for_main_timer;
 volatile unsigned int Timer1, Timer2;
 volatile unsigned int cam_tmr = 0;
 volatile unsigned int gps_tmr = 0;
 volatile unsigned int cam_gps_tmr;
 volatile unsigned int wait_l_cmd_timeout = 0;
-volatile unsigned int check_gps_signal = 3000;
+volatile unsigned int check_gps_signal = 6000;
+volatile unsigned int gprs_offline_20min_timer = 18000;//120000;
+volatile unsigned int gprs_status_timer = 18000;
 void TIM2_IRQHandler(void)
 {
     if (TIM_GetITStatus(TIM2, TIM_IT_Update) != RESET){
@@ -487,6 +490,9 @@ void TIM2_IRQHandler(void)
 	if (gps_tmr) gps_tmr--;
 	if (wait_l_cmd_timeout) wait_l_cmd_timeout--;
 	if (check_gps_signal) check_gps_signal--;
+	if (for_main_timer) for_main_timer--;
+	if (gprs_offline_20min_timer) gprs_offline_20min_timer--;
+	if (gprs_status_timer) gprs_status_timer--;
     }
     
 }

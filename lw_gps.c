@@ -124,18 +124,18 @@ int32_t lw_get_gps_sentence(void)
 	int8_t * nmea_buf = testgpsbuf;
 */
 	if (!check_gps_signal) {
-		GPIO_ResetBits(GPIOC, GPIO_Pin_7);
+		GPIO_ResetBits(GPIOA, GPIO_Pin_1);
 		check_gps_signal = 200;
 		while (check_gps_signal) ;
-		GPIO_SetBits(GPIOC, GPIO_Pin_7);
-		check_gps_signal = 2000;
+		GPIO_SetBits(GPIOA, GPIO_Pin_1);
+		check_gps_signal = 6000;
 	}
 	
 	memset(testgpsbuf, '\0', GPS_MAX_MSG_LEN);
 	ret = lw_gps_get_rbuf(testgpsbuf);
 	if(0 == ret)
 	{
-		check_gps_signal = 2000;
+		check_gps_signal = 6000;
 /*
 #define TESTRMC "$GPRMC,021115.000,A,2306.2713,N,11326.3310,E,0.00,,301012,,,D*74"
 memcpy(testgpsbuf, TESTRMC, strlen(TESTRMC));*/

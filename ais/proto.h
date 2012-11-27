@@ -5,6 +5,11 @@
 //#include "nmea0813.h"
 #include "common.h"
 
+#include "projects_conf.h"
+#if defined (STM_SHIP)
+#define AIVDM_ENABLE
+#endif
+
 #define AIVDM_CHANNELS 2 /*A, B*/
 
 /*   

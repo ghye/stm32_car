@@ -12,6 +12,15 @@ static bool logackFlag = false;
 static bool logsndFlag = false;
 static bool logothFlag = false;
 
+#define CACHE_SIZE 512
+#define NEW_LINE "\x00D\x00A"
+static uint8_t cache_ack[CACHE_SIZE];
+static uint8_t cache_snd[CACHE_SIZE];
+static uint8_t cache_oth[CACHE_SIZE];
+static uint16_t cache_ack_index = 0;
+static uint16_t cache_snd_index = 0;
+static uint16_t cache_oth_index = 0;
+
 bool log_open(uint8_t num)
 {
 	switch (num) {

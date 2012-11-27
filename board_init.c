@@ -15,6 +15,7 @@
 #include "lw_ais.h"
 #include "lw_stm32_dma.h"
 #include "projects_conf.h"
+#include "save_jpg_algorithm.h"
 
 void NVIC_Config(void)
 {
@@ -79,6 +80,8 @@ void board_init(void)
 	lw_gps_init();
 	lw_gps_param_init();
 
+	lw_sd_fatfs_init();
+	
 #if defined (STM_SHIP)	
 	ais_global_init();
 	ais_rx_init();
@@ -88,11 +91,13 @@ void board_init(void)
 #else
 	lw_vc0706_init();
 	lw_vc0706_param_init();	
+
+	get_memory_most_from_sd();
+	send_jpg_from_sd_global_init();
 #endif
 
 	ctrl_gps_cam_init();
 
-	lw_sd_fatfs_init();
 	log_open_ack();
 	log_open_snd();
 	log_open_oth();

@@ -1,7 +1,7 @@
 #include "stdint.h"
 #include "projects_conf.h"
 
-extern volatile unsigned int Timer1, Timer2;
+extern volatile unsigned int for_main_timer;
 
 __asm void SystemReset(void) 
 { 
@@ -20,8 +20,8 @@ int main(void)
 	uint32_t reboot_cnt = 0;
 	
 	board_init();
-	Timer1 = 200;
-	while(Timer1);
+	for_main_timer = 200;
+	while(for_main_timer);
 	
   while (1)
   {
@@ -47,21 +47,27 @@ int main(void)
 	}
 	
 #endif
-	
+
+	#include "save_jpg_algorithm.h"
 	while(1){
 		if (reboot_cnt++>3600) {
+			save_momory_most_to_sd();
 			SystemReset();
 			//__set_FAULTMASK(1);
 			//NVIC_SystemReset();
 			while(1) ;
 		}
-		Timer1 = 100;
-		while(Timer1) {
+		for_main_timer = 100;
+		while(for_main_timer) {
 			#if defined(STM_SHIP)
 			ais_seqed_proc();
+			#else
+			#include "save_jpg_algorithm.h"
+			save_jpg_algorithm();
+			/*if (send_jpg_from_sd_init())
+				send_jpg_from_sd();*/
 			#endif
 		}
-
 		debug_printf_m("start loop");
 		lw_gps_parse();
 		lw_gprs_send_data();
