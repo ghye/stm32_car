@@ -16,6 +16,7 @@
 #include "lw_stm32_dma.h"
 #include "projects_conf.h"
 #include "save_jpg_algorithm.h"
+#include "lw_stm32_wdg.h"
 
 void NVIC_Config(void)
 {
@@ -98,8 +99,9 @@ void board_init(void)
 
 	ctrl_gps_cam_init();
 
-	log_open_ack();
-	log_open_snd();
-	log_open_oth();
+	log_open();
+
+	wdg_init();
+	wdg_start();
 }
 

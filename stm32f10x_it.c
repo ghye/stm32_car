@@ -472,12 +472,12 @@ void TIM1_CC_IRQHandler(void)
 *******************************************************************************/
 volatile unsigned int for_main_timer;
 volatile unsigned int Timer1, Timer2;
-volatile unsigned int cam_tmr = 0;
+volatile unsigned int cam_tmr = 6000;
 volatile unsigned int gps_tmr = 0;
 volatile unsigned int cam_gps_tmr;
 volatile unsigned int wait_l_cmd_timeout = 0;
 volatile unsigned int check_gps_signal = 6000;
-volatile unsigned int gprs_offline_20min_timer = 18000;//120000;
+volatile unsigned int gprs_offline_20min_timer = 18000;/*120000;*/
 volatile unsigned int gprs_status_timer = 18000;
 void TIM2_IRQHandler(void)
 {

@@ -17,7 +17,7 @@ void ctrl_gps_cam_init(void)
 void toggle_send_cam_gps(void)
 {
 	#define GPS_INT 3000
-	#define CAM_INT 18000
+	#define CAM_INT 60000 //18000
 	extern volatile unsigned int cam_tmr;
 	extern volatile unsigned int gps_tmr;
 

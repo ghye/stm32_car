@@ -1,5 +1,6 @@
 #include "stdint.h"
 #include "projects_conf.h"
+#include "lw_stm32_wdg.h"
 
 extern volatile unsigned int for_main_timer;
 
@@ -51,12 +52,16 @@ int main(void)
 	#include "save_jpg_algorithm.h"
 	while(1){
 		if (reboot_cnt++>3600) {
-			save_momory_most_to_sd();
+			#if defined(STM_SHIP)
+			#else
+			save_memory_most_to_sd(true);
+			#endif
 			SystemReset();
 			//__set_FAULTMASK(1);
 			//NVIC_SystemReset();
 			while(1) ;
 		}
+		wdg_keeplive();
 		for_main_timer = 100;
 		while(for_main_timer) {
 			#if defined(STM_SHIP)

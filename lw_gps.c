@@ -1,8 +1,10 @@
+#include <string.h>
 
 #include "stm32f10x_usart.h"
 #include "stm32f10x_rcc.h"
 
 #include "lw_gps.h"
+#include "lw_nmea.h"
 #include "lw_stm32_uart.h"
 
 #define GPS_MAX_MSG_LEN 128
@@ -18,8 +20,12 @@ struct gps_info_{
 };
 struct gps_info_ gps_info;
 
+#define GPS_PWR_ON()	GPIO_SetBits(GPIOA, GPIO_Pin_1)
+#define GPS_PWR_OFF()	GPIO_ResetBits(GPIOA, GPIO_Pin_1)
+
 void lw_gps_init(void)
 {
+	extern volatile unsigned int Timer1;
 	uint32_t i;
 	
 	com_para_t com_para;
@@ -39,10 +45,10 @@ void lw_gps_init(void)
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA, &GPIO_InitStructure);
-	GPIO_ResetBits(GPIOA, GPIO_Pin_1);
-	for (i=0;i<65536;i++)
-		;
-	GPIO_SetBits(GPIOA, GPIO_Pin_1);
+	GPS_PWR_OFF();
+	Timer1 = 300;
+	while (Timer1) ;
+	GPS_PWR_ON();
 
 }
 
@@ -94,17 +100,15 @@ static void lw_gps_put_rbuf(uint8_t val)
 		}
 	}
 	gps_info.rbuf_info.rbuf[gps_info.rbuf_info.rbuf_arry_tail][gps_info.rbuf_info.rbuf_index[gps_info.rbuf_info.rbuf_arry_tail]] = val;		
-	gps_info.rbuf_info.rbuf_index[gps_info.rbuf_info.rbuf_arry_tail]++;
+	if (gps_info.rbuf_info.rbuf_index[gps_info.rbuf_info.rbuf_arry_tail] < GPS_MAX_MSG_LEN -1)
+		gps_info.rbuf_info.rbuf_index[gps_info.rbuf_info.rbuf_arry_tail]++;
 }
 
-int32_t lw_gps_recv(uint8_t val)
+void lw_gps_recv(uint8_t val)
 {
 	//gps_info.rbuf_info.rbuf[gps_info.rbuf_info.rbuf_index ++] = val;
 	lw_gps_put_rbuf(val);
 }
-
-int32_t lw_gps_send()
-{}
 
 #if 1
 uint8_t testgpsbuf[GPS_MAX_MSG_LEN];
@@ -113,6 +117,18 @@ uint8_t *lw_get_gps_buf(void)
 {
 	return testgpsbuf;
 }
+
+static void reset_gps(void)
+{
+	extern volatile unsigned int Timer1;
+	#define RESET_GPS_CMD "\x00D\x00A$PSRF101,0,0,0,0,0,0,12,4*10\x00D\x00A"
+	com_send_string(2, RESET_GPS_CMD);
+	GPS_PWR_OFF();
+	Timer1 = 300;
+	while (Timer1) ;
+	GPS_PWR_ON();
+}
+
 int32_t lw_get_gps_sentence(void)
 {
 	extern volatile unsigned int check_gps_signal;
@@ -123,11 +139,9 @@ int32_t lw_get_gps_sentence(void)
 	struct gps_device_t session;
 	int8_t * nmea_buf = testgpsbuf;
 */
+
 	if (!check_gps_signal) {
-		GPIO_ResetBits(GPIOA, GPIO_Pin_1);
-		check_gps_signal = 200;
-		while (check_gps_signal) ;
-		GPIO_SetBits(GPIOA, GPIO_Pin_1);
+		reset_gps();
 		check_gps_signal = 6000;
 	}
 	
@@ -175,9 +189,13 @@ memcpy(testgpsbuf, TESTRMC, strlen(TESTRMC));*/
 
 void  lw_gps_parse(void)
 {
-	if (lw_get_gps_sentence() == 0)
-	{
-		lw_nmea_parse();
+	uint8_t cnt = 0;
+	
+	while (lw_get_gps_sentence() == 0) {
+		if (1 == lw_nmea_parse())
+			break;
+		if (cnt++ > 40)
+			break;
 	}
 }
 #endif

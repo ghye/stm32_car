@@ -26,9 +26,15 @@
 #include "ctrl_gps_cam.h"
 #endif
 
+#if 0
 #define SEC_LEVEL_FILE_NUM 4
 #define SEC_LEVEL_DIR_NUM 4
 #define FIR_LEVEL_DIR_NUM 4
+#else
+#define SEC_LEVEL_FILE_NUM 1000
+#define SEC_LEVEL_DIR_NUM 10
+#define FIR_LEVEL_DIR_NUM 10
+#endif
 #define PATH_MAX_LEN 16
 
 struct jpg_absolute_path {
@@ -40,10 +46,13 @@ struct jpg_absolute_path {
 #define JPG_HEADER_SIZE 128 /*预留128bytes*/
 struct jpg_ext_msg_ {
 	bool is_indep;
+	bool is_valid;
 	float lat;
 	float lon;
 	float speed;
 	float track;
+	uint8_t time[12];
+	
 };
 struct jpg_ext_msg_ jpg_ext_msg;
 
@@ -52,100 +61,109 @@ struct memory_most_ {
 	uint32_t save_jpg_tail;
 };
 struct memory_most_ memory_most;
-#define MEMORY_MOST_NAME "/m_m"
 
-static bool exist_memory_most_file(void)
+static bool save_momory_most(FIL *fil)
 {
-	#if defined (TARGET_X86)
-	return true;
-	#else
-	int8_t ret;
 	uint32_t bw;
-	FIL fil;
-	FILINFO finfo;
-	struct memory_most_ memory_most;
 	
-	if ((ret = f_stat(MEMORY_MOST_NAME, &finfo)) != FR_OK) {
-		if (ret != FR_NO_FILE)
-			return false;
-		memset(&memory_most, 0, sizeof(struct memory_most_));
-		if (f_open(&fil, MEMORY_MOST_NAME, FA_CREATE_ALWAYS | FA_WRITE))
-			return false;
-		if (f_write(&fil, (const void *) (&memory_most), sizeof(struct memory_most_), &bw) ||
-			bw < sizeof(struct memory_most_)) {
-			f_close(&fil);
-			return false;
-		}
-		if (f_close(&fil))
-			return false;
+	if (f_write(fil, (void *) &memory_most, sizeof(struct memory_most_), &bw) ||
+		bw < sizeof(struct memory_most_)) {
+		return false;
 	}
 	return true;
-	#endif
 }
 
-/*开机时必须调用*/
-bool get_memory_most_from_sd(void)
+static bool is_memory_most_changed(void)
 {
-	#if defined (TARGET_X86)
-	return true;
-	#else
-	uint32_t br;
-	FILINFO finfo;
-	FIL fil;
-
-	if (!exist_memory_most_file()) {
-		goto err1;
-	}
-	if (f_open(&fil, MEMORY_MOST_NAME, FA_READ))
-		goto err1;
-	if (f_read(&fil, (void *) &memory_most, sizeof(struct memory_most_), &br) || 
-			br < sizeof(struct memory_most_)) {
-		goto err2;
-	}
-	f_close(&fil);
-	return true;
-
-err2:
-	f_close(&fil);
-err1:
-	memset((void *)&memory_most, 0, sizeof(struct memory_most_));
-	return false;
-	#endif
-}
-
-bool save_momory_most_to_sd(void)
-{
-	#if defined (TARGET_X86)
-	return true;
-	#else
-	uint32_t bw;
-	FILINFO finfo;
-	FIL fil;
 	static uint32_t gprs_index_old=0;
 	static uint32_t save_index_old=0;
 
-	/*debug_printf_s("gprs_jpg_index:");
-	debug_printf_h(memory_most.gprs_jpg_index);
-	debug_printf_m("");
-	debug_printf_s("save_jpg_tail:");
-	debug_printf_h(memory_most.save_jpg_tail);
-	debug_printf_m("");*/
 	if(gprs_index_old == memory_most.gprs_jpg_index && save_index_old == memory_most.save_jpg_tail)
 		return false;
 	gprs_index_old = memory_most.gprs_jpg_index;
 	save_index_old = memory_most.save_jpg_tail;
-	
-	if (f_open(&fil, MEMORY_MOST_NAME, FA_CREATE_ALWAYS | FA_WRITE))
-		return false;
-	if (f_write(&fil, (void *) &memory_most, sizeof(struct memory_most_), &bw) ||
-		bw < sizeof(struct memory_most_)) {
-		f_close(&fil);
-		return false;
-	}
-	if (f_close(&fil))
-		return false;
 	return true;
-	#endif
+}
+
+static int8_t get_save_path(struct jpg_absolute_path * const path);
+
+/*开机时必须调用*/
+bool get_memory_most_from_sd(void)
+{
+	uint32_t br;
+	FIL fil;
+	struct jpg_absolute_path path;
+	int8_t buf[PATH_MAX_LEN*3];
+
+	if (0 == get_save_path(&path)) {
+		strcpy(buf, "/");
+		strcat(buf, path.first);
+		strcat(buf, "/");
+		strcat(buf, path.second);
+		strcat(buf, "/");
+		strcat(buf, path.jpg);
+		if (f_open(&fil, buf, FA_READ)) {
+			goto err1;
+		}
+		if (f_read(&fil, (void *) &memory_most, sizeof(struct memory_most_), &br) || 
+			br < sizeof(struct memory_most_)) {
+			goto err2;
+		}
+		else {
+			f_close(&fil);
+			is_memory_most_changed();
+			return true;
+		}
+	}
+	else {
+		goto err1;
+	}
+
+err2:
+	f_close(&fil);
+err1:
+	memset(&memory_most, 0, sizeof(struct memory_most_));
+	is_memory_most_changed();
+	return false;
+}
+
+/*当需要保存内存的数据到卡上时，例如断电前，可主动调用*/
+bool save_memory_most_to_sd(bool force_save)
+{
+	FIL fil;
+	struct jpg_absolute_path path;
+	int8_t buf[PATH_MAX_LEN*3];
+
+	if (!force_save && !is_memory_most_changed()) 
+		return false;
+
+	if (0 == get_save_path(&path)) {
+		strcpy(buf, "/");
+		strcat(buf, path.first);
+		strcat(buf, "/");
+		strcat(buf, path.second);
+		strcat(buf, "/");
+		strcat(buf, path.jpg);
+		if (f_open(&fil, buf, FA_WRITE)) {
+			goto err1;
+		}
+		if (save_momory_most(&fil)) {
+			goto err2;
+		}
+		else {
+			if (f_close(&fil))
+				goto err1;
+			return true;
+		}
+	}
+	else {
+		goto err1;
+	}
+	
+err2:
+	f_close(&fil);
+err1:
+	return false;
 }
 
 static bool exist_working_file(const int8_t * const wh, int8_t * const thename)
@@ -452,8 +470,9 @@ static bool create_file(struct jpg_absolute_path * const path)
 	strcat(jpg, "_");
 	strcat(buf1, jpg);
 
-	if (f_open(&fil, buf1, FA_CREATE_ALWAYS))
+	if (f_open(&fil, buf1, FA_CREATE_ALWAYS | FA_WRITE))
 		return false;
+	save_momory_most(&fil);
 	if (f_close(&fil))
 		return false;
 
@@ -1083,12 +1102,14 @@ static bool create_nextfile(struct jpg_absolute_path * const path)
 	return create_mul_path_file(path);
 }
 
-void save_jpg_ext_msg_gps(float lat, float lon, float speed, float track)
+void save_jpg_ext_msg_gps(float lat, float lon, float speed, float track, int8_t is_valid, uint8_t *time/*12bytes*/)
 {
 	jpg_ext_msg.lat = lat;
 	jpg_ext_msg.lon = lon;
 	jpg_ext_msg.speed = speed;
 	jpg_ext_msg.track = track;
+	jpg_ext_msg.is_valid = is_valid;
+	memcpy(jpg_ext_msg.time, time, 12);
 }
 
 static bool save_data_file(const struct jpg_absolute_path * const path)
@@ -1184,7 +1205,7 @@ rp:
 void save_jpg_algorithm(void)
 {
 	if (will_save_memory_most()) {
-		save_momory_most_to_sd();
+		save_memory_most_to_sd(false);
 	}
 	if (gprs_offline_20min() && (is_vc0706_unlock() || is_vc0706_lock_by_sd())) {
 		if (is_send_cam()) {
@@ -1201,6 +1222,7 @@ void save_jpg_algorithm(void)
 enum {
 	STATUE_SEND_JPG_GPS = 0,
 	STATUE_SEND_JPG_L_CMD,
+	STATUE_SEND_HEADER,
 	STATUE_SEND_JPG,
 	STATUE_WAIT_L_CMD,
 	STATUE_FINISH,
@@ -1313,16 +1335,16 @@ int8_t send_jpg_from_sd(void)
 			send_jpg_from_sd_status = STATUE_FINISH;
 			goto fnh;
 		}
-		if (f_read(&sfil, cambuf, JPG_HEADER_SIZE, &br) || br < JPG_HEADER_SIZE) {
+		/*if (f_read(&sfil, cambuf, JPG_HEADER_SIZE, &br) || br < JPG_HEADER_SIZE) {
 			flag = -2;
 			send_jpg_from_sd_status = STATUE_FINISH;
 			goto fnh;
 		}
-		else {
-			memcpy(&jem, cambuf, sizeof(struct jpg_ext_msg_));
+		else {*/
+			//memcpy(&jem, cambuf, sizeof(struct jpg_ext_msg_));
 			/*GPS发送处理*/
 			send_jpg_from_sd_status = STATUE_SEND_JPG_L_CMD;
-		}
+		//}
 		break;
 		case STATUE_SEND_JPG_L_CMD:
 		jpg_size = f_size(&sfil);
@@ -1333,7 +1355,8 @@ int8_t send_jpg_from_sd(void)
 		}
 		else {
 			#define CAM_CMD_L "L:%X#"
-			#if 1
+			#define CAM_CMD_L_E "P:%X#"
+			#if 0
 			jpg_size -= JPG_HEADER_SIZE;
 			#else
 			if (f_lseek(&sfil, 0)) {
@@ -1343,10 +1366,49 @@ int8_t send_jpg_from_sd(void)
 			}
 			#endif
 			send_cnt = 0;
-			send_jpg_from_sd_status = STATUE_SEND_JPG;
+			send_jpg_from_sd_status = STATUE_SEND_HEADER;//STATUE_SEND_JPG;
 			/*send L cmd*/
-			sprintf(buf, CAM_CMD_L, jpg_size);
+			sprintf(buf, CAM_CMD_L_E, jpg_size);
 			gprs_send_cmd_f(1, buf, strlen(buf));
+		}
+		break;
+		case STATUE_SEND_HEADER:
+		get_vc0706_rbuf_info(&cambuf, &cammlen);
+		res = f_read(&sfil, cambuf, 1024, &br);
+		if (br < JPG_HEADER_SIZE) {
+			flag = -1;
+			send_jpg_from_sd_status = STATUE_FINISH;
+			goto fnh;
+		}
+		memcpy((void *)&jem, cambuf, sizeof(struct jpg_ext_msg_));
+		memset(cambuf, '\0', JPG_HEADER_SIZE);
+		sprintf(cambuf, "%f", jem.lat);
+		strcat(cambuf, ",");
+		sprintf(buf, "%f", jem.lon);
+		strcat(cambuf, buf);
+		strcat(cambuf, ",");
+		sprintf(buf, "%f", jem.speed);
+		strcat(cambuf, buf);
+		strcat(cambuf, ",");
+		sprintf(buf, "%f", jem.track);
+		strcat(cambuf, buf);
+		strcat(cambuf, ",");
+		sprintf(buf, "%d", jem.is_valid);
+		strcat(cambuf, buf);
+		strcat(cambuf, ",");
+		memcpy(cambuf +strlen(cambuf), jem.time, 12);
+		
+		send_cnt += br;
+		if ((FR_OK == res) || (send_cnt >= jpg_size)) {
+			/*GPRS发送*/
+			gprs_send_cmd_f(1, cambuf, br);
+			wait_l_cmd_timeout = 3000;
+			send_jpg_from_sd_status = STATUE_WAIT_L_CMD;
+		}
+		else {
+			flag = -1;
+			send_jpg_from_sd_status = STATUE_FINISH;
+			goto fnh;
 		}
 		break;
 		case STATUE_SEND_JPG:
@@ -1355,7 +1417,7 @@ int8_t send_jpg_from_sd(void)
 		send_cnt += br;
 		if ((FR_OK == res) || (send_cnt >= jpg_size)) {
 			/*GPRS发送*/
-			gprs_send_cmd_f(1, cambuf, 1024);
+			gprs_send_cmd_f(1, cambuf, br);
 			wait_l_cmd_timeout = 3000;
 			send_jpg_from_sd_status = STATUE_WAIT_L_CMD;
 		}
@@ -1368,7 +1430,7 @@ int8_t send_jpg_from_sd(void)
 		break;
 		case STATUE_WAIT_L_CMD:
 		/*wait for L cmd*/
-		if (lw_get_seqed_msg("L:")) {
+		if (lw_get_seqed_msg("P:")) {
 			if (send_cnt >= jpg_size) {
 				flag = 1;
 				send_jpg_from_sd_status = STATUE_FINISH;
@@ -1381,15 +1443,17 @@ int8_t send_jpg_from_sd(void)
 		else if (!wait_l_cmd_timeout){
 			flag = -1;
 			send_jpg_from_sd_status = STATUE_FINISH;
-			goto fnh;
+			goto err;
 		}
 		break;
 		#endif
 		case STATUE_FINISH:
+
 fnh:
+		change_memory_most();
+err:
 		f_close(&sfil);
 		memset(&sfil, 0, sizeof(FIL));
-		change_memory_most();
 		send_jpg_from_sd_status = STATUE_SEND_JPG_GPS;
 		break;
 		default:

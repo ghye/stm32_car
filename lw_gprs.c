@@ -37,7 +37,7 @@
 #define SET_SRVTYPE "AT^SISS=0,srvType,Socket\x00D\x00A"
 #define SET_CONID "AT^SISS=0,conId,0\x00D\x00A"
 #define SET_SRV_URL_1 "AT^SISS=0,address,\"socktcp://113.105.139.109:6969\"\x00D\x00A"
-//#define SET_SRV_URL_1 "AT^SISS=0,address,\"socktcp://203.88.202.116:7788\"\x00D\x00A"
+#define SET_SRV_URL_2 "AT^SISS=0,address,\"socktcp://203.88.202.116:7788\"\x00D\x00A"
 #define OPEN_CON0 "AT^SISO=0\x00D\x00A"
 #define CLOSE_CON0 "AT^SISC=0\x00D\x00A"
 #define GET_IMEI "AT+CGSN\x00D\x00A"
@@ -97,6 +97,12 @@ struct _gprs_info{
 };
 struct _gprs_info gprs_info;
 
+struct srvs_ {
+	uint8_t server_sel;
+	uint8_t servers[2][80];
+};
+struct srvs_ srvs;
+
 #define SEQED_MSGS_MAX_LEN 64
 #define SEQED_MSGS_MAX_NUM 10
 struct _seqed_msgs {
@@ -107,6 +113,28 @@ struct _seqed_msgs {
 	uint8_t msgtmp[SEQED_MSGS_MAX_LEN];
 };
 struct _seqed_msgs seqed_msgs;
+
+static void srvs_init(void)
+{
+	memset(&srvs, 0, sizeof(struct srvs_));
+	srvs.server_sel = 0;
+	strcpy(srvs.servers[0], SET_SRV_URL_1);
+	strcpy(srvs.servers[1], SET_SRV_URL_2);
+}
+
+static void srvs_next(void)
+{
+	srvs.server_sel++;
+	if (srvs.server_sel >= sizeof(srvs.servers)/sizeof(srvs.servers[0])) {
+		srvs.server_sel = 0;
+	}
+}
+
+static uint8_t *get_cur_srv(void)
+{
+	return srvs.servers[srvs.server_sel];
+}
+
 void lw_seqed_msgs_init(void)
 {
 	uint32_t i;
@@ -176,7 +204,7 @@ void lw_form_seqed_msgs(void)
 	seqed_msgs.gprs_rbuf_point = gindex;
 
 	for(i=0;i<seqed_msgs.msgs_num;i++) {
-		log_write_ack(seqed_msgs.msgs[i], strlen(seqed_msgs.msgs[i]));
+		log_write(LOG_LEVEL_MSG, seqed_msgs.msgs[i], strlen(seqed_msgs.msgs[i]));
 		//log_write_ack("\x00A", 1);
 	}
 }
@@ -254,9 +282,12 @@ void lw_gprs_init(void)
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
 	GPIO_Init(GPIOC, &GPIO_InitStructure);
 	GPIO_ResetBits(GPIOC, GPIO_Pin_7);
-	for (i=0;i<65536;i++)
-		;
+	Timer1 = 500;
+	while (Timer1) ;
 	GPIO_SetBits(GPIOC, GPIO_Pin_7);
+
+	/*无地方可放，先放在这里。服务器地址列表*/
+	srvs_init();
 }
 
 void lw_start_gprs_mode(void)
@@ -279,7 +310,7 @@ void lw_start_gprs_mode(void)
 }
 
 //#define gprs_send_cmd(x, y) com_send_string(x, y)
-#define gprs_send_cmd(x, y,z ) {com_send_nchar(x, y, z);log_write_snd(y,z);}
+#define gprs_send_cmd(x, y,z ) {com_send_nchar(x, y, z);log_write(LOG_LEVEL_MSG, y,z);}
 
 void gprs_send_cmd_f(uint8_t num, uint8_t *p, uint32_t len)
 {
@@ -447,7 +478,8 @@ static void lw_send_srvurl(void)
 	if(lw_get_seqed_msg("OK") /*收到OK*/)
 	{
 		gprs_info.gprs_status = GPRS_STATUS_SRVURL;
-		gprs_send_cmd(1, SET_SRV_URL_1, strlen(SET_SRV_URL_1));
+		//gprs_send_cmd(1, SET_SRV_URL_1, strlen(SET_SRV_URL_1));
+		gprs_send_cmd(1, get_cur_srv(), strlen(get_cur_srv()));
 	}
 	else if (lw_get_seqed_msg("ERROR"))
 	{
@@ -469,7 +501,8 @@ static void lw_send_socket_open(void)
 	}
 	else if (lw_get_seqed_msg("ERROR"))
 	{
-		gprs_send_cmd(1, SET_SRV_URL_1, strlen(SET_SRV_URL_1));
+		//gprs_send_cmd(1, SET_SRV_URL_1, strlen(SET_SRV_URL_1));
+		gprs_send_cmd(1, get_cur_srv(), strlen(get_cur_srv()));
 	}
 	else {
 
@@ -707,6 +740,7 @@ static int32_t lw_gprs_send_cam(void)
 #endif
 }
 
+#if defined(STM_CAR)
 bool cam_ready_used_save_sd(void)
 {
 	if (lw_cam_get_frame())
@@ -735,6 +769,7 @@ bool get_cam_used_save_sd(uint8_t **buf, uint32_t *len)
 		lw_cam_stop_frame_();
 	return finish;
 }
+#endif
 
 static bool lw_gprs_sending_gps(uint8_t *buf, uint32_t buflen) 
 {
@@ -791,7 +826,24 @@ static void check_gprs_status_err(void)
 		Timer1 = 100;
 		while (Timer1) ;
 		GPIO_SetBits(GPIOC, GPIO_Pin_7);
+		gprs_send_cmd(1, "check_gprs_status_err\x00D\x00A", strlen("check_gprs_status_err\x00D\x00A"));
 	}
+}
+
+static void reset_gprs(void)
+{
+	extern volatile unsigned int Timer1;
+	static uint8_t gprs_restart_cnt = 0;
+
+	if (gprs_restart_cnt++ < 5) {
+		return ;
+	}
+	gprs_restart_cnt = 0;
+	GPIO_ResetBits(GPIOC, GPIO_Pin_7);
+	Timer1= 500;
+	while(Timer1) ;
+	GPIO_SetBits(GPIOC, GPIO_Pin_7);
+	gprs_send_cmd(1, "reset_gprs\x00D\x00A", strlen("reset_gprs\x00D\x00A"));
 }
 
 int32_t lw_gprs_tcp_send_data(void)
@@ -801,11 +853,17 @@ int32_t lw_gprs_tcp_send_data(void)
 	
 	debug_printf_m("start lw_gprs_tcp_send_data");	
 	if (lw_get_seqed_msg("START")) {
+		reset_gprs();
 		gprs_info.gprs_status = GPRS_STATUS_NOINIT;
 	}
 	//else if (lw_get_seqed_msg("closed") || (gprs_info.gprs_status ==GPRS_STATUS_SOCKET_OPEN))
 	else if (lw_get_seqed_msg("closed")) {
 		gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_FINISH;
+	}
+	else if (lw_get_seqed_msg("Remote host is unreachable") ||
+			lw_get_seqed_msg("Remote host has rejected the connection")) {
+		gprs_info.gprs_status = GPRS_STATUS_NOINIT;
+		srvs_next();
 	}
 	else {
 		check_gprs_status_err();
@@ -817,9 +875,16 @@ int32_t lw_gprs_tcp_send_data(void)
 	switch(gprs_info.gprs_status)
 	{
 		case GPRS_STATUS_NOINIT:
+			#if defined (STM_CAR)
 			if (is_vc0706_lock_by_gprs())
 				set_vc0706_unlock();
-			if (!is_send_cam() && !is_send_gps() && !have_jpg_from_sd_to_send() && !(gprs_info.send_imei_now))
+			#endif
+			
+			if (!is_send_cam() && !is_send_gps() && 
+				#if defined (STM_CAR)
+				!have_jpg_from_sd_to_send() && 
+				#endif
+				!(gprs_info.send_imei_now))
 				break;
 			lw_start_gprs_mode();
 			lw_seqed_msgs_init();
@@ -858,7 +923,7 @@ int32_t lw_gprs_tcp_send_data(void)
 			lw_gprs_check_socket_tp_mode_succ();
 			break;
 		case GPRS_STATUS_SOCKET_TP_SUCC:
-			gprs_offline_20min_timer = 18000;//120000;
+			gprs_offline_20min_timer = 18000;/*120000;*/
 			if (true == gprs_info.send_imei_now) {
 				gprs_info.send_imei_now = false;
 				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SEND_GPS;
@@ -883,6 +948,7 @@ int32_t lw_gprs_tcp_send_data(void)
 			}
 
 			break;
+		#if defined (STM_CAR)
 		case GPRS_STATUS_SOCKET_TP_SEND_SDJPG:
 			ret = send_jpg_from_sd();
 			if (1 == ret) {
@@ -910,6 +976,7 @@ int32_t lw_gprs_tcp_send_data(void)
 			}
 
 			break;
+		#endif
 		case GPRS_STATUS_SOCKET_TP_SEND_GPS:
 			if (lw_gprs_sending_gps(gprs_info.sbuf_info.sbuf, gprs_info.sbuf_info.sbuf_len)) {
 				gprs_info.gprs_status = GPRS_STATUS_SOCKET_TP_SUCC;

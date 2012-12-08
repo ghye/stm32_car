@@ -4,10 +4,13 @@
 #include "lw_gps.h"
 #include "lw_gprs.h"
 //#include "nmea0813.h"
+#include "projects_conf.h"
+#include "save_jpg_algorithm.h"
 
 struct gps_device_t session;
 int32_t lw_nmea_parse(void)
 {
+	int32_t flag = -1;
 	int32_t nmea_ret;
 	uint8_t *pgps;
 
@@ -28,9 +31,14 @@ int32_t lw_nmea_parse(void)
 				session.nmea.nmea_u.gprmc.lon, session.nmea.nmea_u.gprmc.speed, 
 				session.nmea.nmea_u.gprmc.track /*航向*/, 
 				(session.nmea.nmea_u.gprmc.status==STATUS_FIX) ? 1:0 /*数据状态: 1:有效，0:无效*/);
+			#if defined (STM_CAR)
 			save_jpg_ext_msg_gps((float)session.nmea.nmea_u.gprmc.lat, 
 				(float)session.nmea.nmea_u.gprmc.lon, (float)session.nmea.nmea_u.gprmc.speed, 
-				(float)session.nmea.nmea_u.gprmc.track /*航向*/);
+				(float)session.nmea.nmea_u.gprmc.track /*航向*/, 
+				(session.nmea.nmea_u.gprmc.status==STATUS_FIX) ? 1:0 /*数据状态: 1:有效，0:无效*/,
+				session.nmea.nmea_u.gprmc.time.tm/*12bytes*/);
+			#endif
+			flag = 1;
 			break;
 			default:
 			break;
@@ -39,6 +47,6 @@ int32_t lw_nmea_parse(void)
 
 	}
 
-	return 0;
+	return flag;
 }
 

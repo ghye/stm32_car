@@ -5,8 +5,8 @@
 #include <stdbool.h>
 
 bool get_memory_most_from_sd(void);
-bool save_momory_most_to_sd(void);
-void save_jpg_ext_msg_gps(float lat, float lon, float speed, float track);
+bool save_memory_most_to_sd(bool force_save);
+void save_jpg_ext_msg_gps(float lat, float lon, float speed, float track, int8_t is_valid, uint8_t *time/*12bytes*/);
 void save_jpg_algorithm(void);
 void send_jpg_from_sd_global_init(void);
 bool send_jpg_from_sd_init(void);

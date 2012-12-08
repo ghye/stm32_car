@@ -6,6 +6,7 @@
 #include "stm32f10x_usart.h"
 #include "stm32f10x_rcc.h"
 
+#include "util.h"
 #include "lw_vc0706.h"
 #include "lw_stm32_uart.h"
 #include "lw_stm32_dma.h"
@@ -138,8 +139,58 @@ void lw_vc0706_clean_rbuf(void)
 	memset(vc0706_info.rbuf_info.rbuf, 0, VC0706_MAX_CMD_LEN);
 }
 
+#define VC0706_PWR_ON()	GPIO_SetBits(GPIOB, GPIO_Pin_12)
+#define VC0706_PWR_OFF()	GPIO_ResetBits(GPIOB, GPIO_Pin_12)
+
+static void vc0706_uart2gpio(void);
 void lw_vc0706_send_set_ratio(uint8_t ratio);
 void lw_vc0706_init(void)
+{
+	com_para_t com_para;
+	GPIO_InitTypeDef GPIO_InitStructure;
+
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOB, ENABLE);
+	
+	com_para.baudrate = 38400;
+	com_para.data_9bit = false;
+	com_para.parity = 0;
+	com_para.port = 3;
+	com_para.twoStopBits = false;
+	com_init(&com_para);
+
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12; /*IR LED power*/
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOC, &GPIO_InitStructure);
+	GPIO_ResetBits(GPIOC, GPIO_Pin_12);
+
+	GPIO_Init(GPIOB, &GPIO_InitStructure); /*VC0706 power*/
+	VC0706_PWR_OFF();
+
+	lw_vc0706_send_set_ratio(0xFF);
+
+
+	//vc0706_uart2gpio();
+}
+
+static void vc0706_uart2gpio(void)
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+	
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	GPIO_ResetBits(GPIOB, GPIO_Pin_10);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	GPIO_ResetBits(GPIOB, GPIO_Pin_11);
+}
+
+static void vc0706_gpio2uart(void)
 {
 	com_para_t com_para;
 
@@ -151,9 +202,8 @@ void lw_vc0706_init(void)
 	com_para.port = 3;
 	com_para.twoStopBits = false;
 	com_init(&com_para);
-
-	lw_vc0706_send_set_ratio(0xFF);
 }
+
 
 void lw_vc0706_param_init(void)
 {
@@ -307,10 +357,49 @@ static void lw_vc0706_send_set_size(uint8_t flag)
 	cam_send_cmd(3, sz, 5);
 }
 
-static void lw_vc0706_send_system_reset(void)
+static int8_t lw_vc0706_send_system_reset(void)
 {
+	#if 0
 	vc0706_info.status = VC0706_STATUS_SYSTEM_RESET;
 	cam_send_cmd(3, lw_vc0706_form_system_reset(), vc0706_info.sbuf_info.sbuf_len);
+
+	#else
+	extern volatile unsigned int Timer1;
+	uint8_t count = 0;
+
+rep:
+	count++;
+	VC0706_RXNE_IRQ_DISABLE();
+	lw_vc0706_clean_rbuf();
+	VC0706_RXNE_IRQ_ENABLE();
+	
+	VC0706_PWR_OFF();
+	vc0706_uart2gpio();
+	Timer1 = 300;
+	while (Timer1) ;
+	VC0706_PWR_ON();
+	vc0706_gpio2uart();
+	
+	/*
+	VC0703 1.00
+	No ctrl infr
+	MI360
+	525
+	Init end
+	*/
+	Timer1 = 300;
+	while (vc0706_info.rbuf_info.recv_point < 49 && Timer1)
+		;
+	if (!Timer1 ||
+		NULL == memstr(vc0706_info.rbuf_info.rbuf, vc0706_info.rbuf_info.recv_point, "Init end", strlen("Init end"))) {
+		if (count < 5)
+			goto rep;
+		else
+			return -1;
+	}
+	#endif
+	
+	return 0;
 }
 
 static void lw_vc0706_send_stop_cfbuf(void)
@@ -446,10 +535,12 @@ int32_t lw_cam_get_frame(void)
 	extern volatile
 	unsigned int Timer1, Timer2;
 	
-	lw_vc0706_send_system_reset();
+	if (lw_vc0706_send_system_reset() < 0)
+		return -1;
 	Timer1 = 200;
 	while(Timer1);
-	
+
+	GPIO_SetBits(GPIOC, GPIO_Pin_12);
 	//lw_vc0706_send_set_ratio(0xFF);
 	lw_vc0706_send_set_size(1);
 	Timer1 = 100;
@@ -459,6 +550,9 @@ int32_t lw_cam_get_frame(void)
 	lw_vc0706_clean_rbuf();
 	VC0706_RXNE_IRQ_ENABLE();
 	lw_vc0706_send_stop_cfbuf();
+	Timer1 = 100;
+	while(Timer1);
+	GPIO_ResetBits(GPIOC, GPIO_Pin_12);
 	if (lw_cam_waitfor_fbuf_ctrl())
 		return -1;
 
